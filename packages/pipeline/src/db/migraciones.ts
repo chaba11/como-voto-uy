@@ -38,7 +38,11 @@ CREATE TABLE IF NOT EXISTS proyectos_ley (
   nombre TEXT NOT NULL,
   descripcion TEXT,
   tema TEXT,
-  sesion_id INTEGER NOT NULL REFERENCES sesiones(id)
+  sesion_id INTEGER NOT NULL REFERENCES sesiones(id),
+  resultado_afirmativos INTEGER,
+  resultado_total INTEGER,
+  resultado TEXT CHECK(resultado IN ('afirmativa', 'negativa')),
+  unanimidad INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS votos (

@@ -10,6 +10,10 @@ export interface DatosProyecto {
     legisladorId: number
     voto: TipoVoto
   }[]
+  resultadoAfirmativos?: number
+  resultadoTotal?: number
+  resultado?: 'afirmativa' | 'negativa'
+  unanimidad?: boolean
 }
 
 export interface DatosSesion {
@@ -43,6 +47,10 @@ export function cargarSesion(db: DB, datos: DatosSesion) {
           descripcion: proyecto.descripcion,
           tema: proyecto.tema,
           sesionId: sesionInsertada.id,
+          resultadoAfirmativos: proyecto.resultadoAfirmativos,
+          resultadoTotal: proyecto.resultadoTotal,
+          resultado: proyecto.resultado,
+          unanimidad: proyecto.unanimidad,
         })
         .returning()
         .get()

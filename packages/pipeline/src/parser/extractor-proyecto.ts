@@ -31,15 +31,27 @@ export function extraerProyecto(textoContexto: string): ProyectoExtraido {
     proyecto.repartido = matchRepartido[1]
   }
 
-  // Extraer nombre del proyecto
-  const patronNombre =
-    /[Pp]royecto\s+de\s+(?:ley|minuta\s+de\s+comunicaci[oó]n)\s+(?:por\s+el\s+que\s+se\s+)?(.+?)(?:\.|$)/i
+  // Extraer nombre del proyecto - multiple strategies
+  const patronesNombre = [
+    // "Proyecto de ley por el que se..."
+    /[Pp]royecto\s+de\s+(?:ley|minuta\s+de\s+comunicaci[oó]n)\s+(?:por\s+el\s+(?:cual|que)\s+se\s+)?(.+?)(?:\.\s|$)/i,
+    // Numbered items: "5) SOLICITUDES DE LICENCIA" or "10) PROYECTO DE LEY..."
+    /\d+\)\s+([A-ZÁÉÍÓÚÑÜ][A-ZÁÉÍÓÚÑÜ\s,]+?)(?:\n|\.\s)/,
+    // "Minuta de comunicación" or "Mensaje del Poder Ejecutivo"
+    /(?:Minuta\s+de\s+comunicaci[oó]n|Mensaje\s+del\s+Poder\s+Ejecutivo)(.+?)(?:\.\s|$)/i,
+  ]
 
-  const matchNombre = patronNombre.exec(textoContexto)
-  if (matchNombre) {
-    proyecto.nombre = matchNombre[0]
-      .trim()
-      .replace(/\.$/, '')
+  for (const patron of patronesNombre) {
+    const match = patron.exec(textoContexto)
+    if (match) {
+      proyecto.nombre = match[0]
+        .trim()
+        .replace(/\.$/, '')
+        .replace(/\n/g, ' ')
+        .replace(/\s+/g, ' ')
+        .slice(0, 200)
+      break
+    }
   }
 
   return proyecto

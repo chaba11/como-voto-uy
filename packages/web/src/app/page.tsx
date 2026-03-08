@@ -57,6 +57,27 @@ export default async function Home() {
                   <span>{ley.fecha}</span>
                   <span className="capitalize">{ley.camara}</span>
                 </div>
+                {ley.resultado && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span
+                      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                        ley.resultado === 'afirmativa'
+                          ? 'bg-green-50 text-green-700'
+                          : 'bg-red-50 text-red-700'
+                      }`}
+                    >
+                      {ley.resultado === 'afirmativa' ? 'Aprobada' : 'Rechazada'}
+                    </span>
+                    {ley.resultadoAfirmativos != null && ley.resultadoTotal != null && (
+                      <span className="text-xs text-gray-400">
+                        {ley.resultadoAfirmativos}/{ley.resultadoTotal}
+                      </span>
+                    )}
+                    {ley.unanimidad && (
+                      <span className="text-xs text-gray-400">unanimidad</span>
+                    )}
+                  </div>
+                )}
                 {ley.tema && (
                   <span className="mt-2 inline-block rounded-full bg-blue-50 px-2 py-0.5 text-xs text-[#002868]">
                     {ley.tema}

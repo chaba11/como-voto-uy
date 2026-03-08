@@ -18,6 +18,10 @@ async function obtenerProyecto(id: number) {
       tema: proyectosLey.tema,
       fecha: sesiones.fecha,
       camara: sesiones.camara,
+      resultadoAfirmativos: proyectosLey.resultadoAfirmativos,
+      resultadoTotal: proyectosLey.resultadoTotal,
+      resultado: proyectosLey.resultado,
+      unanimidad: proyectosLey.unanimidad,
     })
     .from(proyectosLey)
     .innerJoin(sesiones, eq(proyectosLey.sesionId, sesiones.id))
@@ -80,26 +84,55 @@ export default async function PaginaLey({
         </div>
 
         {/* Resumen de votos */}
-        <div className="mt-6 grid gap-4 sm:grid-cols-3">
-          <div className="rounded-lg bg-green-50 p-3 text-center">
-            <div className="text-2xl font-bold text-green-700">
-              {totales.afirmativo}
+        {votosProyecto.length > 0 ? (
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+            <div className="rounded-lg bg-green-50 p-3 text-center">
+              <div className="text-2xl font-bold text-green-700">
+                {totales.afirmativo}
+              </div>
+              <div className="text-xs text-green-600">Afirmativos</div>
             </div>
-            <div className="text-xs text-green-600">Afirmativos</div>
-          </div>
-          <div className="rounded-lg bg-red-50 p-3 text-center">
-            <div className="text-2xl font-bold text-red-700">
-              {totales.negativo}
+            <div className="rounded-lg bg-red-50 p-3 text-center">
+              <div className="text-2xl font-bold text-red-700">
+                {totales.negativo}
+              </div>
+              <div className="text-xs text-red-600">Negativos</div>
             </div>
-            <div className="text-xs text-red-600">Negativos</div>
-          </div>
-          <div className="rounded-lg bg-gray-100 p-3 text-center">
-            <div className="text-2xl font-bold text-gray-600">
-              {totales.ausente}
+            <div className="rounded-lg bg-gray-100 p-3 text-center">
+              <div className="text-2xl font-bold text-gray-600">
+                {totales.ausente}
+              </div>
+              <div className="text-xs text-gray-500">Ausentes</div>
             </div>
-            <div className="text-xs text-gray-500">Ausentes</div>
           </div>
-        </div>
+        ) : proyecto.resultado ? (
+          <div className="mt-6">
+            <div className="flex items-center gap-4">
+              <span
+                className={`rounded-full px-4 py-1.5 text-sm font-semibold ${
+                  proyecto.resultado === 'afirmativa'
+                    ? 'bg-green-100 text-green-800'
+                    : 'bg-red-100 text-red-800'
+                }`}
+              >
+                {proyecto.resultado === 'afirmativa' ? 'Aprobada' : 'Rechazada'}
+              </span>
+              {proyecto.resultadoAfirmativos != null && proyecto.resultadoTotal != null && (
+                <span className="text-lg text-gray-600">
+                  {proyecto.resultadoAfirmativos} en {proyecto.resultadoTotal} votos
+                </span>
+              )}
+              {proyecto.unanimidad && (
+                <span className="rounded-full bg-blue-50 px-3 py-1 text-sm text-blue-700">
+                  Unanimidad
+                </span>
+              )}
+            </div>
+            <p className="mt-3 text-sm text-gray-500">
+              Votacion agregada — no se registraron votos individuales.
+            </p>
+          </div>
+        ) : null}
       </div>
 
       {/* Desglose por partido */}

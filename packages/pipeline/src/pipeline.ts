@@ -20,6 +20,36 @@ import type { DatosSesion, DatosProyecto } from './loader/cargador-sesion.js'
 import type { DB } from './db/conexion.js'
 import type { VotacionExtraida } from './parser/tipos-parser.js'
 
+/**
+ * Extrae un nombre legible del texto de contexto de una votación.
+ */
+function limpiarTextoContexto(texto: string): string {
+  // Remove line breaks, collapse whitespace
+  let limpio = texto.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim()
+
+  // Try to find the most relevant sentence before "(Se vota)"
+  const seVotaIdx = limpio.indexOf('Se va a votar')
+  if (seVotaIdx === -1) {
+    const seVota2 = limpio.indexOf('(Se vota)')
+    if (seVota2 > 0) {
+      limpio = limpio.slice(0, seVota2).trim()
+    }
+  } else {
+    limpio = limpio.slice(0, seVotaIdx).trim()
+  }
+
+  // Take last meaningful sentence (skip attendance/procedural text)
+  const oraciones = limpio.split(/[.]\s+/).filter((s) => s.length > 10)
+  if (oraciones.length > 0) {
+    limpio = oraciones[oraciones.length - 1].trim()
+  }
+
+  // Remove leading dashes, numbers
+  limpio = limpio.replace(/^[\d\s)–\-]+/, '').trim()
+
+  return limpio.slice(0, 200) || 'Votación sin identificar'
+}
+
 export interface OpcionesPipeline {
   camara: Camara
   legislatura: number
@@ -100,7 +130,7 @@ function votacionADatosProyecto(
 ): DatosProyecto | null {
   const nombre =
     votacion.proyecto?.nombre ||
-    votacion.textoContexto.slice(0, 120).trim() ||
+    limpiarTextoContexto(votacion.textoContexto) ||
     'Votación sin identificar'
 
   const votosDb: DatosProyecto['votos'] = []
@@ -122,6 +152,10 @@ function votacionADatosProyecto(
       : undefined,
     tema: undefined,
     votos: votosDb,
+    resultadoAfirmativos: votacion.resultado?.afirmativos,
+    resultadoTotal: votacion.resultado?.total,
+    resultado: votacion.resultado?.resultado,
+    unanimidad: votacion.resultado?.unanimidad,
   }
 }
 

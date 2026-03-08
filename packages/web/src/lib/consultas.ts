@@ -159,6 +159,10 @@ export async function buscarLeyes(filtros: {
       tema: proyectosLey.tema,
       fecha: sesiones.fecha,
       camara: sesiones.camara,
+      resultadoAfirmativos: proyectosLey.resultadoAfirmativos,
+      resultadoTotal: proyectosLey.resultadoTotal,
+      resultado: proyectosLey.resultado,
+      unanimidad: proyectosLey.unanimidad,
     })
     .from(proyectosLey)
     .innerJoin(sesiones, eq(proyectosLey.sesionId, sesiones.id))
@@ -177,6 +181,10 @@ export async function obtenerLeyesRecientes(limite: number = 10) {
       tema: proyectosLey.tema,
       fecha: sesiones.fecha,
       camara: sesiones.camara,
+      resultadoAfirmativos: proyectosLey.resultadoAfirmativos,
+      resultadoTotal: proyectosLey.resultadoTotal,
+      resultado: proyectosLey.resultado,
+      unanimidad: proyectosLey.unanimidad,
     })
     .from(proyectosLey)
     .innerJoin(sesiones, eq(proyectosLey.sesionId, sesiones.id))

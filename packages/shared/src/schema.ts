@@ -45,6 +45,11 @@ export const proyectosLey = sqliteTable('proyectos_ley', {
   sesionId: integer('sesion_id')
     .notNull()
     .references(() => sesiones.id),
+  // Aggregate vote results (for non-nominal votes)
+  resultadoAfirmativos: integer('resultado_afirmativos'),
+  resultadoTotal: integer('resultado_total'),
+  resultado: text('resultado', { enum: ['afirmativa', 'negativa'] }),
+  unanimidad: integer('unanimidad', { mode: 'boolean' }),
 })
 
 export const votos = sqliteTable('votos', {
