@@ -20,6 +20,7 @@ RUN pnpm --filter=@como-voto-uy/shared build
 RUN pnpm --filter=@como-voto-uy/pipeline build
 # Run pipeline to generate DB
 RUN mkdir -p /data && DB_PATH=/data/como-voto.db node packages/pipeline/dist/cli.js all --camara=senado --legislatura=50
+RUN DB_PATH=/data/como-voto.db node packages/pipeline/dist/cli.js representantes
 # Build web
 ENV DB_PATH=/data/como-voto.db
 RUN pnpm --filter=@como-voto-uy/web build

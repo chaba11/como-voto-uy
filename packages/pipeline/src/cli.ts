@@ -5,6 +5,7 @@ import { seedLegislaturas } from './seed/legislaturas.js'
 import { seedLegisladores } from './seed/legisladores.js'
 import { cargarConfig } from './config.js'
 import { ejecutarPipeline } from './pipeline.js'
+import { ejecutarPipelineRepresentantes } from './loader/cargador-votaciones-representantes.js'
 import { obtenerListadoSesiones } from './scraper/listado.js'
 import { descargarDocumento } from './scraper/descargador.js'
 import { parsearTaquigrafica } from './parser/index.js'
@@ -130,9 +131,17 @@ async function main() {
       break
     }
 
+    case 'representantes': {
+      const resultado = await ejecutarPipelineRepresentantes(config.rutaDb)
+      console.log(
+        `\nRepresentantes completado: ${resultado.sesionesNuevas} sesiones, ${resultado.votosIndividuales} votos individuales`,
+      )
+      break
+    }
+
     default:
       console.log(
-        'Uso: cli <seed|scrape|parse|load|all> [--camara=senado|representantes] [--legislatura=50] [--limite=N]',
+        'Uso: cli <seed|scrape|parse|load|all|representantes> [--camara=senado|representantes] [--legislatura=50] [--limite=N]',
       )
       process.exit(1)
   }
