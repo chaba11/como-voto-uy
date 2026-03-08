@@ -25,7 +25,8 @@ ENV DB_PATH=/data/como-voto.db
 # Copy Next.js standalone output
 COPY --from=builder /app/packages/web/.next/standalone ./
 COPY --from=builder /app/packages/web/.next/static ./packages/web/.next/static
-COPY --from=builder /app/packages/web/public ./packages/web/public 2>/dev/null || true
+# public directory is optional
+RUN mkdir -p ./packages/web/public
 VOLUME ["/data"]
 EXPOSE 3000
 CMD ["node", "packages/web/server.js"]
