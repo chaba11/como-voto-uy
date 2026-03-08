@@ -1,0 +1,12 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`regresión: parseo de taquigráfica nominal > el resultado coincide con snapshot de propiedades clave 1`] = `
+{
+  "cantidadAsistentes": 29,
+  "cantidadAusentes": 183,
+  "totalVotaciones": 60,
+  "totalVotosNominales": 153,
+  "votacionesAgregadas": 54,
+  "votacionesNominales": 6,
+}
+`;

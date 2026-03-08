@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.turbo/
+.next/
+*.db
+*.sqlite
+.env
+.env.local
+data/
+.worktrees/

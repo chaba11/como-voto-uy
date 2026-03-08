@@ -1,0 +1,28 @@
+{
+  "name": "@como-voto-uy/pipeline",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "cli": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@como-voto-uy/shared": "workspace:*",
+    "better-sqlite3": "^11",
+    "drizzle-orm": "^0.38",
+    "pdf-parse": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7",
+    "@types/pdf-parse": "^1",
+    "tsup": "^8",
+    "tsx": "^4",
+    "typescript": "^5.7",
+    "vitest": "^3"
+  }
+}

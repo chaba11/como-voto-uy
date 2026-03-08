@@ -1,0 +1,30 @@
+services:
+  pipeline:
+    build:
+      context: .
+      dockerfile: packages/pipeline/Dockerfile
+    volumes:
+      - data:/data
+    environment:
+      - DB_PATH=/data/como-voto.db
+      - DATOS_DIR=/data/documentos
+    profiles:
+      - pipeline
+
+  web:
+    build:
+      context: .
+      dockerfile: packages/web/Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - data:/data
+    environment:
+      - DB_PATH=/data/como-voto.db
+    depends_on:
+      pipeline:
+        condition: service_completed_successfully
+        required: false
+
+volumes:
+  data:
