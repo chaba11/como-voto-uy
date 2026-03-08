@@ -10,6 +10,7 @@ import { crearConexion } from './db/conexion.js'
 import { pushearSchema } from './db/migraciones.js'
 import { seedPartidos } from './seed/partidos.js'
 import { seedLegislaturas } from './seed/legislaturas.js'
+import { seedLegisladores } from './seed/legisladores.js'
 import { obtenerListadoSesiones } from './scraper/listado.js'
 import { descargarDocumento } from './scraper/descargador.js'
 import { parsearTaquigrafica } from './parser/index.js'
@@ -144,6 +145,7 @@ export async function ejecutarPipeline(
   pushearSchema(sqlite)
   seedPartidos(db)
   seedLegislaturas(db)
+  seedLegisladores(db)
 
   const legislaturaId = obtenerLegislaturaId(db, opciones.legislatura)
   const listaLegisladores = obtenerLegisladoresCamara(db, opciones.camara)

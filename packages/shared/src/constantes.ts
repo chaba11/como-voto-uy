@@ -18,8 +18,8 @@ export const LEGISLATURAS: InfoLegislatura[] = [
 export const BASE_URL_PARLAMENTO = 'https://parlamento.gub.uy'
 
 export const URLS_TAQUIGRAFICAS: Record<Camara, string> = {
-  senado: `${BASE_URL_PARLAMENTO}/camarasycomisiones/senadores/plenario/actas-y-diarios-de-sesion/diarios-de-sesion`,
-  representantes: `${BASE_URL_PARLAMENTO}/camarasycomisiones/representantes/plenario/actas-y-diarios-de-sesion/diarios-de-sesion`,
+  senado: `${BASE_URL_PARLAMENTO}/camarasycomisiones/senadores/plenario/documentos/diarios-de-sesion`,
+  representantes: `${BASE_URL_PARLAMENTO}/camarasycomisiones/representantes/plenario/documentos/diarios-de-sesion`,
 }
 
 export const MIEMBROS_POR_CAMARA: Record<Camara, number> = {

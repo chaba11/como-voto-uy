@@ -2,6 +2,7 @@ import { crearConexion } from './db/conexion.js'
 import { pushearSchema } from './db/migraciones.js'
 import { seedPartidos } from './seed/partidos.js'
 import { seedLegislaturas } from './seed/legislaturas.js'
+import { seedLegisladores } from './seed/legisladores.js'
 import { cargarConfig } from './config.js'
 import { ejecutarPipeline } from './pipeline.js'
 import { obtenerListadoSesiones } from './scraper/listado.js'
@@ -40,6 +41,7 @@ async function main() {
       pushearSchema(sqlite)
       seedPartidos(db)
       seedLegislaturas(db)
+      seedLegisladores(db)
       console.log('Seed completado')
       sqlite.close()
       break
