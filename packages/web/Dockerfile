@@ -22,6 +22,8 @@ FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV DB_PATH=/data/como-voto.db
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
 # Copy Next.js standalone output
 COPY --from=builder /app/packages/web/.next/standalone ./
 COPY --from=builder /app/packages/web/.next/static ./packages/web/.next/static
