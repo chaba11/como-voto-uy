@@ -1,69 +1,289 @@
-import { sesiones, proyectosLey, votos } from '@como-voto-uy/shared'
+import { and, eq, isNull } from 'drizzle-orm'
+import {
+  asuntos,
+  evidencias,
+  fuentes,
+  resultadosAgregados,
+  sesiones,
+  votaciones,
+  votosIndividuales,
+} from '@como-voto-uy/shared'
+import type {
+  CuerpoLegislativo,
+  EstadoCoberturaVotacion,
+  ModalidadVotacion,
+  NivelConfianzaVoto,
+  ResultadoVotacion,
+  TipoEvidencia,
+  TipoFuente,
+  TipoVoto,
+} from '@como-voto-uy/shared'
 import type { DB } from '../db/conexion.js'
-import type { Camara, TipoVoto } from '@como-voto-uy/shared'
 
-export interface DatosProyecto {
+export interface DatosFuente {
+  tipo: TipoFuente
+  url: string
+  fechaCaptura?: string
+  hashContenido?: string
+}
+
+export interface DatosEvidencia {
+  tipo: TipoEvidencia
+  texto?: string
+  timestampInicio?: number
+  timestampFin?: number
+  detalle?: string
+}
+
+export interface DatosAsunto {
   nombre: string
   descripcion?: string
   tema?: string
-  votos: {
-    legisladorId: number
-    voto: TipoVoto
-  }[]
-  resultadoAfirmativos?: number
-  resultadoTotal?: number
-  resultado?: 'afirmativa' | 'negativa'
+  codigoOficial?: string
+  carpeta?: string
+  repartido?: string
+  numeroLey?: string
+  tipoAsunto?: string
+}
+
+export interface DatosVotoIndividual {
+  legisladorId: number
+  voto: TipoVoto
+  nivelConfianza?: NivelConfianzaVoto
+  esOficial?: boolean
+  fuente?: DatosFuente
+  evidencias?: DatosEvidencia[]
+}
+
+export interface DatosResultadoAgregado {
+  afirmativos?: number
+  negativos?: number
+  abstenciones?: number
+  totalPresentes?: number
+  totalMiembros?: number
   unanimidad?: boolean
+  resultado?: ResultadoVotacion
+}
+
+export interface DatosVotacion {
+  asunto?: DatosAsunto | null
+  ordenSesion?: number
+  modalidad: ModalidadVotacion
+  estadoCobertura: EstadoCoberturaVotacion
+  nivelConfianza: NivelConfianzaVoto
+  esOficial?: boolean
+  resultado?: ResultadoVotacion
+  fuentePrincipal?: DatosFuente
+  votosIndividuales?: DatosVotoIndividual[]
+  resultadoAgregado?: DatosResultadoAgregado
+  evidencias?: DatosEvidencia[]
 }
 
 export interface DatosSesion {
   legislaturaId: number
-  camara: Camara
+  cuerpo: CuerpoLegislativo
   fecha: string
   numero?: number
   urlTaquigrafica?: string
-  proyectos: DatosProyecto[]
+  fuente?: DatosFuente
+  votaciones: DatosVotacion[]
+}
+
+function ahoraIso(): string {
+  return new Date().toISOString()
+}
+
+function crearClaveAsunto(asunto: DatosAsunto): string | null {
+  if (asunto.codigoOficial?.trim()) return `codigo:${asunto.codigoOficial.trim()}`
+  if (asunto.carpeta?.trim() && asunto.repartido?.trim()) {
+    return `carpeta:${asunto.carpeta.trim()}|repartido:${asunto.repartido.trim()}`
+  }
+  if (asunto.carpeta?.trim()) return `carpeta:${asunto.carpeta.trim()}`
+  return null
+}
+
+function insertarORecuperarFuente(tx: DB, fuente?: DatosFuente | null): number | null {
+  if (!fuente?.url) return null
+
+  const existente = tx
+    .select({ id: fuentes.id })
+    .from(fuentes)
+    .where(and(eq(fuentes.tipo, fuente.tipo), eq(fuentes.url, fuente.url)))
+    .get()
+
+  if (existente) return existente.id
+
+  const insertada = tx
+    .insert(fuentes)
+    .values({
+      tipo: fuente.tipo,
+      url: fuente.url,
+      fechaCaptura: fuente.fechaCaptura ?? ahoraIso(),
+      hashContenido: fuente.hashContenido,
+    })
+    .returning({ id: fuentes.id })
+    .get()
+
+  return insertada.id
+}
+
+function insertarORecuperarAsunto(tx: DB, asunto?: DatosAsunto | null): number | null {
+  if (!asunto) return null
+
+  const clave = crearClaveAsunto(asunto)
+  let existente:
+    | {
+        id: number
+      }
+    | undefined
+
+  if (clave?.startsWith('codigo:')) {
+    existente = tx
+      .select({ id: asuntos.id })
+      .from(asuntos)
+      .where(eq(asuntos.codigoOficial, asunto.codigoOficial!))
+      .get()
+  } else if (clave?.startsWith('carpeta:') && asunto.repartido) {
+    existente = tx
+      .select({ id: asuntos.id })
+      .from(asuntos)
+      .where(
+        and(
+          eq(asuntos.carpeta, asunto.carpeta!),
+          eq(asuntos.repartido, asunto.repartido),
+        ),
+      )
+      .get()
+  } else if (asunto.carpeta) {
+    existente = tx
+      .select({ id: asuntos.id })
+      .from(asuntos)
+      .where(and(eq(asuntos.carpeta, asunto.carpeta), isNull(asuntos.repartido)))
+      .get()
+  } else {
+    existente = tx
+      .select({ id: asuntos.id })
+      .from(asuntos)
+      .where(eq(asuntos.nombre, asunto.nombre))
+      .get()
+  }
+
+  if (existente) return existente.id
+
+  const insertado = tx
+    .insert(asuntos)
+    .values({
+      nombre: asunto.nombre,
+      descripcion: asunto.descripcion,
+      tema: asunto.tema,
+      codigoOficial: asunto.codigoOficial,
+      carpeta: asunto.carpeta,
+      repartido: asunto.repartido,
+      numeroLey: asunto.numeroLey,
+      tipoAsunto: asunto.tipoAsunto,
+    })
+    .returning({ id: asuntos.id })
+    .get()
+
+  return insertado.id
 }
 
 export function cargarSesion(db: DB, datos: DatosSesion) {
   return db.transaction((tx) => {
+    const fuenteSesionId = insertarORecuperarFuente(tx, datos.fuente)
+
     const sesionInsertada = tx
       .insert(sesiones)
       .values({
         legislaturaId: datos.legislaturaId,
-        camara: datos.camara,
+        cuerpo: datos.cuerpo,
         fecha: datos.fecha,
         numero: datos.numero,
         urlTaquigrafica: datos.urlTaquigrafica,
+        fuenteId: fuenteSesionId,
       })
       .returning()
       .get()
 
-    for (const proyecto of datos.proyectos) {
-      const proyectoInsertado = tx
-        .insert(proyectosLey)
+    for (const votacion of datos.votaciones) {
+      const asuntoId = insertarORecuperarAsunto(tx, votacion.asunto)
+      const fuentePrincipalId = insertarORecuperarFuente(tx, votacion.fuentePrincipal)
+
+      const votacionInsertada = tx
+        .insert(votaciones)
         .values({
-          nombre: proyecto.nombre,
-          descripcion: proyecto.descripcion,
-          tema: proyecto.tema,
           sesionId: sesionInsertada.id,
-          resultadoAfirmativos: proyecto.resultadoAfirmativos,
-          resultadoTotal: proyecto.resultadoTotal,
-          resultado: proyecto.resultado,
-          unanimidad: proyecto.unanimidad,
+          asuntoId,
+          ordenSesion: votacion.ordenSesion,
+          modalidad: votacion.modalidad,
+          estadoCobertura: votacion.estadoCobertura,
+          nivelConfianza: votacion.nivelConfianza,
+          esOficial: votacion.esOficial ?? true,
+          resultado: votacion.resultado,
+          fuentePrincipalId,
         })
-        .returning()
+        .returning({ id: votaciones.id })
         .get()
 
-      if (proyecto.votos.length > 0) {
-        tx.insert(votos)
-          .values(
-            proyecto.votos.map((v) => ({
-              proyectoLeyId: proyectoInsertado.id,
-              legisladorId: v.legisladorId,
-              voto: v.voto,
-            }))
-          )
+      if (votacion.resultadoAgregado) {
+        tx.insert(resultadosAgregados)
+          .values({
+            votacionId: votacionInsertada.id,
+            afirmativos: votacion.resultadoAgregado.afirmativos,
+            negativos: votacion.resultadoAgregado.negativos,
+            abstenciones: votacion.resultadoAgregado.abstenciones,
+            totalPresentes: votacion.resultadoAgregado.totalPresentes,
+            totalMiembros: votacion.resultadoAgregado.totalMiembros,
+            unanimidad: votacion.resultadoAgregado.unanimidad,
+            resultado: votacion.resultadoAgregado.resultado,
+          })
+          .run()
+      }
+
+      for (const votoIndividual of votacion.votosIndividuales ?? []) {
+        const fuenteVotoId = insertarORecuperarFuente(tx, votoIndividual.fuente)
+        const votoInsertado = tx
+          .insert(votosIndividuales)
+          .values({
+            votacionId: votacionInsertada.id,
+            legisladorId: votoIndividual.legisladorId,
+            voto: votoIndividual.voto,
+            nivelConfianza: votoIndividual.nivelConfianza ?? votacion.nivelConfianza,
+            esOficial: votoIndividual.esOficial ?? votacion.esOficial ?? true,
+            fuenteId: fuenteVotoId,
+          })
+          .returning({ id: votosIndividuales.id })
+          .get()
+
+        for (const evidencia of votoIndividual.evidencias ?? []) {
+          tx.insert(evidencias)
+            .values({
+              fuenteId: fuenteVotoId ?? fuentePrincipalId ?? fuenteSesionId!,
+              votacionId: votacionInsertada.id,
+              votoIndividualId: votoInsertado.id,
+              tipo: evidencia.tipo,
+              texto: evidencia.texto,
+              timestampInicio: evidencia.timestampInicio,
+              timestampFin: evidencia.timestampFin,
+              detalle: evidencia.detalle,
+            })
+            .run()
+        }
+      }
+
+      for (const evidencia of votacion.evidencias ?? []) {
+        const fuenteEvidenciaId = fuentePrincipalId ?? fuenteSesionId
+        if (!fuenteEvidenciaId) continue
+        tx.insert(evidencias)
+          .values({
+            fuenteId: fuenteEvidenciaId,
+            votacionId: votacionInsertada.id,
+            tipo: evidencia.tipo,
+            texto: evidencia.texto,
+            timestampInicio: evidencia.timestampInicio,
+            timestampFin: evidencia.timestampFin,
+            detalle: evidencia.detalle,
+          })
           .run()
       }
     }

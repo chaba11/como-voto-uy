@@ -4,11 +4,16 @@ import {
   partidos,
   legisladores,
   legislaturas,
+  fuentes,
   sesiones,
-  proyectosLey,
-  votos,
+  asuntos,
+  votaciones,
+  resultadosAgregados,
+  votosIndividuales,
+  evidencias,
   LEGISLATURAS,
   MIEMBROS_POR_CAMARA,
+  MIEMBROS_POR_CUERPO,
 } from '@como-voto-uy/shared'
 
 describe('schema', () => {
@@ -16,18 +21,26 @@ describe('schema', () => {
     expect(partidos).toBeDefined()
     expect(legisladores).toBeDefined()
     expect(legislaturas).toBeDefined()
+    expect(fuentes).toBeDefined()
     expect(sesiones).toBeDefined()
-    expect(proyectosLey).toBeDefined()
-    expect(votos).toBeDefined()
+    expect(asuntos).toBeDefined()
+    expect(votaciones).toBeDefined()
+    expect(resultadosAgregados).toBeDefined()
+    expect(votosIndividuales).toBeDefined()
+    expect(evidencias).toBeDefined()
   })
 
   it('tablas tienen nombres correctos', () => {
     expect(getTableName(partidos)).toBe('partidos')
     expect(getTableName(legisladores)).toBe('legisladores')
     expect(getTableName(legislaturas)).toBe('legislaturas')
+    expect(getTableName(fuentes)).toBe('fuentes')
     expect(getTableName(sesiones)).toBe('sesiones')
-    expect(getTableName(proyectosLey)).toBe('proyectos_ley')
-    expect(getTableName(votos)).toBe('votos')
+    expect(getTableName(asuntos)).toBe('asuntos')
+    expect(getTableName(votaciones)).toBe('votaciones')
+    expect(getTableName(resultadosAgregados)).toBe('resultados_agregados')
+    expect(getTableName(votosIndividuales)).toBe('votos_individuales')
+    expect(getTableName(evidencias)).toBe('evidencias')
   })
 })
 
@@ -41,5 +54,10 @@ describe('constantes', () => {
   it('tiene miembros por cámara correctos', () => {
     expect(MIEMBROS_POR_CAMARA.senado).toBe(31)
     expect(MIEMBROS_POR_CAMARA.representantes).toBe(99)
+  })
+
+  it('tiene miembros por cuerpo correctos', () => {
+    expect(MIEMBROS_POR_CUERPO.asamblea_general).toBe(130)
+    expect(MIEMBROS_POR_CUERPO.comision_permanente).toBe(16)
   })
 })

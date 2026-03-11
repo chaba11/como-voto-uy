@@ -1,16 +1,22 @@
-import { eq, like, and, sql, desc, count } from 'drizzle-orm'
+import { and, count, desc, eq, inArray, like } from 'drizzle-orm'
 import { db } from './db'
 import {
+  asuntos,
+  fuentes,
   legisladores,
-  votos,
-  proyectosLey,
-  sesiones,
   partidos,
-  legislaturas,
+  resultadosAgregados,
+  sesiones,
+  votaciones,
+  votosIndividuales,
 } from '@como-voto-uy/shared'
+
+const nivelesPublicos: Array<'confirmado' | 'alto' | 'medio'> = ['confirmado', 'alto', 'medio']
+const nivelesRanking: Array<'confirmado' | 'alto'> = ['confirmado', 'alto']
 
 export async function obtenerLegislador(id: number) {
   if (!db) return null
+
   const resultado = await db
     .select({
       id: legisladores.id,
@@ -18,7 +24,7 @@ export async function obtenerLegislador(id: number) {
       camara: legisladores.camara,
       departamento: legisladores.departamento,
       titularId: legisladores.titularId,
-      partidoId: legisladores.partidoId,
+      partidoId: partidos.id,
       partidoNombre: partidos.nombre,
       partidoSigla: partidos.sigla,
       partidoColor: partidos.color,
@@ -31,23 +37,21 @@ export async function obtenerLegislador(id: number) {
   if (resultado.length === 0) return null
 
   const leg = resultado[0]
-
-  let titular = null
-  if (leg.titularId) {
-    const titularRes = await db
-      .select({ id: legisladores.id, nombre: legisladores.nombre })
-      .from(legisladores)
-      .where(eq(legisladores.id, leg.titularId))
-      .limit(1)
-    titular = titularRes[0] || null
-  }
+  const titular = leg.titularId
+    ? (
+        await db
+          .select({ id: legisladores.id, nombre: legisladores.nombre })
+          .from(legisladores)
+          .where(eq(legisladores.id, leg.titularId))
+          .limit(1)
+      )[0] ?? null
+    : null
 
   return {
     id: leg.id,
     nombre: leg.nombre,
     camara: leg.camara,
     departamento: leg.departamento,
-    titularId: leg.titularId,
     partido: {
       id: leg.partidoId,
       nombre: leg.partidoNombre,
@@ -60,40 +64,89 @@ export async function obtenerLegislador(id: number) {
 
 export async function obtenerVotosPorLegislador(legisladorId: number) {
   if (!db) return []
+
   return await db
     .select({
-      id: votos.id,
-      voto: votos.voto,
-      proyectoLeyId: proyectosLey.id,
-      proyectoNombre: proyectosLey.nombre,
+      id: votosIndividuales.id,
+      voto: votosIndividuales.voto,
+      nivelConfianza: votosIndividuales.nivelConfianza,
+      asuntoId: asuntos.id,
+      asuntoNombre: asuntos.nombre,
       fecha: sesiones.fecha,
-      camara: sesiones.camara,
+      cuerpo: sesiones.cuerpo,
+      fuenteTipo: fuentes.tipo,
+      fuenteUrl: fuentes.url,
     })
-    .from(votos)
-    .innerJoin(proyectosLey, eq(votos.proyectoLeyId, proyectosLey.id))
-    .innerJoin(sesiones, eq(proyectosLey.sesionId, sesiones.id))
-    .where(eq(votos.legisladorId, legisladorId))
-    .orderBy(desc(sesiones.fecha))
+    .from(votosIndividuales)
+    .innerJoin(votaciones, eq(votosIndividuales.votacionId, votaciones.id))
+    .innerJoin(sesiones, eq(votaciones.sesionId, sesiones.id))
+    .leftJoin(asuntos, eq(votaciones.asuntoId, asuntos.id))
+    .leftJoin(fuentes, eq(votosIndividuales.fuenteId, fuentes.id))
+    .where(
+      and(
+        eq(votosIndividuales.legisladorId, legisladorId),
+        inArray(votosIndividuales.nivelConfianza, nivelesPublicos),
+      ),
+    )
+    .orderBy(desc(sesiones.fecha), desc(votaciones.ordenSesion))
 }
 
-export async function obtenerVotosPorProyecto(proyectoId: number) {
-  if (!db) return []
-  return await db
+export async function obtenerEstadisticasLegislador(legisladorId: number) {
+  if (!db) return null
+
+  const legislador = await obtenerLegislador(legisladorId)
+  if (!legislador) return null
+
+  const votos = await db
     .select({
-      id: votos.id,
-      voto: votos.voto,
-      legisladorId: legisladores.id,
-      legisladorNombre: legisladores.nombre,
-      partidoId: partidos.id,
-      partidoNombre: partidos.nombre,
-      partidoSigla: partidos.sigla,
-      partidoColor: partidos.color,
+      voto: votosIndividuales.voto,
+      nivelConfianza: votosIndividuales.nivelConfianza,
+      votacionId: votosIndividuales.votacionId,
     })
-    .from(votos)
-    .innerJoin(legisladores, eq(votos.legisladorId, legisladores.id))
-    .innerJoin(partidos, eq(legisladores.partidoId, partidos.id))
-    .where(eq(votos.proyectoLeyId, proyectoId))
-    .orderBy(partidos.nombre, legisladores.nombre)
+    .from(votosIndividuales)
+    .where(
+      and(
+        eq(votosIndividuales.legisladorId, legisladorId),
+        inArray(votosIndividuales.nivelConfianza, nivelesPublicos),
+      ),
+    )
+
+  const totalCobertura = await db
+    .select({ total: count() })
+    .from(votaciones)
+    .innerJoin(sesiones, eq(votaciones.sesionId, sesiones.id))
+    .where(
+      and(
+        eq(sesiones.cuerpo, legislador.camara),
+        inArray(votaciones.nivelConfianza, nivelesRanking),
+      ),
+    )
+
+  const total = votos.length
+  const confirmados = votos.filter((v) => v.nivelConfianza === 'confirmado').length
+  const inferidos = votos.filter((v) => v.nivelConfianza !== 'confirmado').length
+  const afirmativos = votos.filter((v) => v.voto === 'afirmativo').length
+  const negativos = votos.filter((v) => v.voto === 'negativo').length
+  const abstenciones = votos.filter((v) => v.voto === 'abstencion').length
+  const ausentes = votos.filter((v) => v.voto === 'ausente').length
+  const presentes = total - ausentes
+  const denominadorCobertura = totalCobertura[0]?.total ?? 0
+
+  return {
+    legisladorId,
+    totalVotosPublicos: total,
+    confirmados,
+    inferidos,
+    afirmativos,
+    negativos,
+    abstenciones,
+    ausentes,
+    porcentajeCobertura:
+      denominadorCobertura > 0
+        ? Math.round((new Set(votos.map((v) => v.votacionId)).size / denominadorCobertura) * 100)
+        : 0,
+    porcentajeAsistencia: total > 0 ? Math.round((presentes / total) * 100) : 0,
+  }
 }
 
 export async function buscarLegisladores(filtros: {
@@ -104,15 +157,9 @@ export async function buscarLegisladores(filtros: {
   if (!db) return []
 
   const condiciones = []
-  if (filtros.partido) {
-    condiciones.push(eq(legisladores.partidoId, filtros.partido))
-  }
-  if (filtros.departamento) {
-    condiciones.push(eq(legisladores.departamento, filtros.departamento))
-  }
-  if (filtros.termino) {
-    condiciones.push(like(legisladores.nombre, `%${filtros.termino}%`))
-  }
+  if (filtros.partido) condiciones.push(eq(legisladores.partidoId, filtros.partido))
+  if (filtros.departamento) condiciones.push(eq(legisladores.departamento, filtros.departamento))
+  if (filtros.termino) condiciones.push(like(legisladores.nombre, `%${filtros.termino}%`))
 
   return await db
     .select({
@@ -120,7 +167,6 @@ export async function buscarLegisladores(filtros: {
       nombre: legisladores.nombre,
       camara: legisladores.camara,
       departamento: legisladores.departamento,
-      titularId: legisladores.titularId,
       partidoId: partidos.id,
       partidoNombre: partidos.nombre,
       partidoSigla: partidos.sigla,
@@ -133,63 +179,74 @@ export async function buscarLegisladores(filtros: {
     .limit(50)
 }
 
+type FilaAsuntoBusqueda = {
+  id: number
+  nombre: string
+  descripcion: string | null
+  tema: string | null
+  numeroLey: string | null
+  fecha: string
+  cuerpo: string
+  modalidad: string
+  estadoCobertura: string
+  resultado: 'afirmativa' | 'negativa' | null
+  afirmativos: number | null
+  negativos: number | null
+  totalPresentes: number | null
+  unanimidad: boolean | null
+}
+
+function deduplicarAsuntos(filas: FilaAsuntoBusqueda[]) {
+  const mapa = new Map<number, FilaAsuntoBusqueda>()
+  for (const fila of filas) {
+    if (!mapa.has(fila.id)) mapa.set(fila.id, fila)
+  }
+  return [...mapa.values()]
+}
+
 export async function buscarLeyes(filtros: {
   año?: number
-  camara?: string
+  cuerpo?: string
   termino?: string
 }) {
   if (!db) return []
 
   const condiciones = []
-  if (filtros.camara) {
-    condiciones.push(eq(sesiones.camara, filtros.camara as 'senado' | 'representantes'))
-  }
-  if (filtros.termino) {
-    condiciones.push(like(proyectosLey.nombre, `%${filtros.termino}%`))
-  }
-  if (filtros.año) {
-    condiciones.push(like(sesiones.fecha, `${filtros.año}%`))
-  }
+  if (filtros.cuerpo) condiciones.push(eq(sesiones.cuerpo, filtros.cuerpo as never))
+  if (filtros.termino) condiciones.push(like(asuntos.nombre, `%${filtros.termino}%`))
+  if (filtros.año) condiciones.push(like(sesiones.fecha, `${filtros.año}%`))
 
-  return await db
+  const filas = await db
     .select({
-      id: proyectosLey.id,
-      nombre: proyectosLey.nombre,
-      descripcion: proyectosLey.descripcion,
-      tema: proyectosLey.tema,
+      id: asuntos.id,
+      nombre: asuntos.nombre,
+      descripcion: asuntos.descripcion,
+      tema: asuntos.tema,
+      numeroLey: asuntos.numeroLey,
       fecha: sesiones.fecha,
-      camara: sesiones.camara,
-      resultadoAfirmativos: proyectosLey.resultadoAfirmativos,
-      resultadoTotal: proyectosLey.resultadoTotal,
-      resultado: proyectosLey.resultado,
-      unanimidad: proyectosLey.unanimidad,
+      cuerpo: sesiones.cuerpo,
+      modalidad: votaciones.modalidad,
+      estadoCobertura: votaciones.estadoCobertura,
+      resultado: votaciones.resultado,
+      afirmativos: resultadosAgregados.afirmativos,
+      negativos: resultadosAgregados.negativos,
+      totalPresentes: resultadosAgregados.totalPresentes,
+      unanimidad: resultadosAgregados.unanimidad,
     })
-    .from(proyectosLey)
-    .innerJoin(sesiones, eq(proyectosLey.sesionId, sesiones.id))
+    .from(asuntos)
+    .innerJoin(votaciones, eq(votaciones.asuntoId, asuntos.id))
+    .innerJoin(sesiones, eq(votaciones.sesionId, sesiones.id))
+    .leftJoin(resultadosAgregados, eq(resultadosAgregados.votacionId, votaciones.id))
     .where(condiciones.length > 0 ? and(...condiciones) : undefined)
-    .orderBy(desc(sesiones.fecha))
-    .limit(50)
+    .orderBy(desc(sesiones.fecha), desc(votaciones.ordenSesion))
+    .limit(100)
+
+  return deduplicarAsuntos(filas)
 }
 
-export async function obtenerLeyesRecientes(limite: number = 10) {
-  if (!db) return []
-  return await db
-    .select({
-      id: proyectosLey.id,
-      nombre: proyectosLey.nombre,
-      descripcion: proyectosLey.descripcion,
-      tema: proyectosLey.tema,
-      fecha: sesiones.fecha,
-      camara: sesiones.camara,
-      resultadoAfirmativos: proyectosLey.resultadoAfirmativos,
-      resultadoTotal: proyectosLey.resultadoTotal,
-      resultado: proyectosLey.resultado,
-      unanimidad: proyectosLey.unanimidad,
-    })
-    .from(proyectosLey)
-    .innerJoin(sesiones, eq(proyectosLey.sesionId, sesiones.id))
-    .orderBy(desc(sesiones.fecha))
-    .limit(limite)
+export async function obtenerLeyesRecientes(limite = 10) {
+  const filas = await buscarLeyes({})
+  return filas.slice(0, limite)
 }
 
 export async function obtenerPartidos() {
@@ -197,46 +254,182 @@ export async function obtenerPartidos() {
   return await db.select().from(partidos).orderBy(partidos.nombre)
 }
 
-export async function obtenerEstadisticasLegislador(legisladorId: number) {
+export async function obtenerAsuntoConVotaciones(id: number) {
   if (!db) return null
 
-  const resultado = await db
+  const asunto = (
+    await db
+      .select()
+      .from(asuntos)
+      .where(eq(asuntos.id, id))
+      .limit(1)
+  )[0]
+
+  if (!asunto) return null
+
+  const votacionesBase = await db
     .select({
-      total: count(),
-      afirmativos: count(
-        sql`CASE WHEN ${votos.voto} = 'afirmativo' THEN 1 END`
-      ),
-      negativos: count(
-        sql`CASE WHEN ${votos.voto} = 'negativo' THEN 1 END`
-      ),
-      ausentes: count(
-        sql`CASE WHEN ${votos.voto} = 'ausente' THEN 1 END`
-      ),
+      id: votaciones.id,
+      cuerpo: sesiones.cuerpo,
+      fecha: sesiones.fecha,
+      sesionNumero: sesiones.numero,
+      ordenSesion: votaciones.ordenSesion,
+      modalidad: votaciones.modalidad,
+      estadoCobertura: votaciones.estadoCobertura,
+      nivelConfianza: votaciones.nivelConfianza,
+      esOficial: votaciones.esOficial,
+      resultado: votaciones.resultado,
+      afirmativos: resultadosAgregados.afirmativos,
+      negativos: resultadosAgregados.negativos,
+      abstenciones: resultadosAgregados.abstenciones,
+      totalPresentes: resultadosAgregados.totalPresentes,
+      unanimidad: resultadosAgregados.unanimidad,
+      fuenteId: fuentes.id,
+      fuenteTipo: fuentes.tipo,
+      fuenteUrl: fuentes.url,
     })
-    .from(votos)
-    .where(eq(votos.legisladorId, legisladorId))
+    .from(votaciones)
+    .innerJoin(sesiones, eq(votaciones.sesionId, sesiones.id))
+    .leftJoin(resultadosAgregados, eq(resultadosAgregados.votacionId, votaciones.id))
+    .leftJoin(fuentes, eq(votaciones.fuentePrincipalId, fuentes.id))
+    .where(eq(votaciones.asuntoId, id))
+    .orderBy(desc(sesiones.fecha), desc(votaciones.ordenSesion))
 
-  if (resultado.length === 0 || resultado[0].total === 0) {
-    return {
-      legisladorId,
-      totalVotos: 0,
-      afirmativos: 0,
-      negativos: 0,
-      ausentes: 0,
-      porcentajeAsistencia: 0,
-    }
-  }
-
-  const stats = resultado[0]
-  const presentes = stats.afirmativos + stats.negativos
+  const votosBase = await db
+    .select({
+      id: votosIndividuales.id,
+      votacionId: votosIndividuales.votacionId,
+      voto: votosIndividuales.voto,
+      nivelConfianza: votosIndividuales.nivelConfianza,
+      esOficial: votosIndividuales.esOficial,
+      legisladorId: legisladores.id,
+      legisladorNombre: legisladores.nombre,
+      legisladorCamara: legisladores.camara,
+      legisladorDepartamento: legisladores.departamento,
+      partidoId: partidos.id,
+      partidoNombre: partidos.nombre,
+      partidoSigla: partidos.sigla,
+      partidoColor: partidos.color,
+      fuenteId: fuentes.id,
+      fuenteTipo: fuentes.tipo,
+      fuenteUrl: fuentes.url,
+    })
+    .from(votosIndividuales)
+    .innerJoin(legisladores, eq(votosIndividuales.legisladorId, legisladores.id))
+    .innerJoin(partidos, eq(legisladores.partidoId, partidos.id))
+    .innerJoin(votaciones, eq(votosIndividuales.votacionId, votaciones.id))
+    .leftJoin(fuentes, eq(votosIndividuales.fuenteId, fuentes.id))
+    .where(
+      and(
+        eq(votaciones.asuntoId, id),
+        inArray(votosIndividuales.nivelConfianza, nivelesPublicos),
+      ),
+    )
 
   return {
-    legisladorId,
-    totalVotos: stats.total,
-    afirmativos: stats.afirmativos,
-    negativos: stats.negativos,
-    ausentes: stats.ausentes,
-    porcentajeAsistencia:
-      stats.total > 0 ? Math.round((presentes / stats.total) * 100) : 0,
+    ...asunto,
+    votaciones: votacionesBase.map((fila) => ({
+      id: fila.id,
+      cuerpo: fila.cuerpo,
+      fecha: fila.fecha,
+      sesionNumero: fila.sesionNumero,
+      ordenSesion: fila.ordenSesion,
+      modalidad: fila.modalidad,
+      estadoCobertura: fila.estadoCobertura,
+      nivelConfianza: fila.nivelConfianza,
+      esOficial: !!fila.esOficial,
+      resultado: fila.resultado,
+      afirmativos: fila.afirmativos,
+      negativos: fila.negativos,
+      abstenciones: fila.abstenciones,
+      totalPresentes: fila.totalPresentes,
+      unanimidad: fila.unanimidad,
+      fuente: fila.fuenteId
+        ? {
+            id: fila.fuenteId,
+            tipo: fila.fuenteTipo!,
+            url: fila.fuenteUrl!,
+          }
+        : null,
+      votosIndividuales: votosBase
+        .filter((voto) => voto.votacionId === fila.id)
+        .map((voto) => ({
+          id: voto.id,
+          voto: voto.voto,
+          nivelConfianza: voto.nivelConfianza as 'confirmado' | 'alto' | 'medio',
+          esOficial: !!voto.esOficial,
+          legislador: {
+            id: voto.legisladorId,
+            nombre: voto.legisladorNombre,
+            camara: voto.legisladorCamara,
+            departamento: voto.legisladorDepartamento,
+            partido: {
+              id: voto.partidoId,
+              nombre: voto.partidoNombre,
+              sigla: voto.partidoSigla,
+              color: voto.partidoColor,
+            },
+            titularId: null,
+          },
+          fuente: voto.fuenteId
+            ? {
+                id: voto.fuenteId,
+                tipo: voto.fuenteTipo!,
+                url: voto.fuenteUrl!,
+              }
+            : null,
+          evidencias: [],
+        })),
+    })),
+  }
+}
+
+export async function obtenerPartidoDetalle(id: number) {
+  if (!db) return null
+
+  const partido = (
+    await db
+      .select()
+      .from(partidos)
+      .where(eq(partidos.id, id))
+      .limit(1)
+  )[0]
+
+  if (!partido) return null
+
+  const miembros = await db
+    .select({
+      id: legisladores.id,
+      nombre: legisladores.nombre,
+      camara: legisladores.camara,
+      departamento: legisladores.departamento,
+    })
+    .from(legisladores)
+    .where(eq(legisladores.partidoId, id))
+    .orderBy(legisladores.camara, legisladores.nombre)
+
+  const votos = await db
+    .select({
+      voto: votosIndividuales.voto,
+      asuntoId: asuntos.id,
+      asuntoNombre: asuntos.nombre,
+      fecha: sesiones.fecha,
+    })
+    .from(votosIndividuales)
+    .innerJoin(legisladores, eq(votosIndividuales.legisladorId, legisladores.id))
+    .innerJoin(votaciones, eq(votosIndividuales.votacionId, votaciones.id))
+    .leftJoin(asuntos, eq(votaciones.asuntoId, asuntos.id))
+    .innerJoin(sesiones, eq(votaciones.sesionId, sesiones.id))
+    .where(
+      and(
+        eq(legisladores.partidoId, id),
+        inArray(votosIndividuales.nivelConfianza, nivelesRanking),
+      ),
+    )
+
+  return {
+    partido,
+    miembros,
+    votos,
   }
 }

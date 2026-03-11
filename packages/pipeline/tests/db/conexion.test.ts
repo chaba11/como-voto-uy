@@ -16,9 +16,13 @@ describe('conexion', () => {
     expect(nombres).toContain('partidos')
     expect(nombres).toContain('legisladores')
     expect(nombres).toContain('legislaturas')
+    expect(nombres).toContain('fuentes')
     expect(nombres).toContain('sesiones')
-    expect(nombres).toContain('proyectos_ley')
-    expect(nombres).toContain('votos')
+    expect(nombres).toContain('asuntos')
+    expect(nombres).toContain('votaciones')
+    expect(nombres).toContain('resultados_agregados')
+    expect(nombres).toContain('votos_individuales')
+    expect(nombres).toContain('evidencias')
   })
 
   it('tiene foreign keys habilitadas', () => {

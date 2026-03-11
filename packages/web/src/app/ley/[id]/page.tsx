@@ -1,34 +1,9 @@
-import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { db } from '@/lib/db'
-import { obtenerVotosPorProyecto } from '@/lib/consultas'
-import { proyectosLey, sesiones } from '@como-voto-uy/shared'
-import { eq } from 'drizzle-orm'
+import { notFound } from 'next/navigation'
 import type { TipoVoto } from '@como-voto-uy/shared'
 import { DesglosePartido } from '@/components/desglose-partido'
 import { IndicadorVoto } from '@/components/indicador-voto'
-
-async function obtenerProyecto(id: number) {
-  if (!db) return null
-  const resultado = await db
-    .select({
-      id: proyectosLey.id,
-      nombre: proyectosLey.nombre,
-      descripcion: proyectosLey.descripcion,
-      tema: proyectosLey.tema,
-      fecha: sesiones.fecha,
-      camara: sesiones.camara,
-      resultadoAfirmativos: proyectosLey.resultadoAfirmativos,
-      resultadoTotal: proyectosLey.resultadoTotal,
-      resultado: proyectosLey.resultado,
-      unanimidad: proyectosLey.unanimidad,
-    })
-    .from(proyectosLey)
-    .innerJoin(sesiones, eq(proyectosLey.sesionId, sesiones.id))
-    .where(eq(proyectosLey.id, id))
-    .limit(1)
-  return resultado[0] || null
-}
+import { obtenerAsuntoConVotaciones } from '@/lib/consultas'
 
 export default async function PaginaLey({
   params,
@@ -36,169 +11,120 @@ export default async function PaginaLey({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const proyectoId = parseInt(id, 10)
-  if (isNaN(proyectoId)) notFound()
+  const asuntoId = parseInt(id, 10)
+  if (Number.isNaN(asuntoId)) notFound()
 
-  let proyecto: Awaited<ReturnType<typeof obtenerProyecto>> = null
-  let votosProyecto: Awaited<ReturnType<typeof obtenerVotosPorProyecto>> = []
-
-  try {
-    ;[proyecto, votosProyecto] = await Promise.all([
-      obtenerProyecto(proyectoId),
-      obtenerVotosPorProyecto(proyectoId),
-    ])
-  } catch {
-    // DB not available
-  }
-
-  if (!proyecto) notFound()
-
-  const totales = votosProyecto.reduce(
-    (acc, v) => {
-      acc[v.voto as TipoVoto]++
-      return acc
-    },
-    { afirmativo: 0, negativo: 0, ausente: 0 } as Record<TipoVoto, number>,
-  )
+  const asunto = await obtenerAsuntoConVotaciones(asuntoId)
+  if (!asunto) notFound()
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
-      {/* Header */}
       <div className="mb-8 rounded-xl bg-white p-6 shadow-sm">
-        <h1 className="text-3xl font-bold text-gray-900">{proyecto.nombre}</h1>
-        {proyecto.descripcion && (
-          <p className="mt-2 text-gray-600">{proyecto.descripcion}</p>
-        )}
-        <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-gray-500">
-          <span>{proyecto.fecha}</span>
-          <span className="text-gray-300">|</span>
-          <span className="capitalize">{proyecto.camara}</span>
-          {proyecto.tema && (
-            <>
-              <span className="text-gray-300">|</span>
+        <h1 className="text-3xl font-bold text-gray-900">{asunto.nombre}</h1>
+        {asunto.descripcion && <p className="mt-2 text-gray-600">{asunto.descripcion}</p>}
+      </div>
+
+      <div className="space-y-6">
+        {asunto.votaciones.map((votacion) => (
+          <section key={votacion.id} className="rounded-xl bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+                {votacion.fecha}
+              </span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700 capitalize">
+                {votacion.cuerpo}
+              </span>
               <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-[#002868]">
-                {proyecto.tema}
+                {votacion.modalidad}
               </span>
-            </>
-          )}
-        </div>
-
-        {/* Resumen de votos */}
-        {votosProyecto.length > 0 ? (
-          <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            <div className="rounded-lg bg-green-50 p-3 text-center">
-              <div className="text-2xl font-bold text-green-700">
-                {totales.afirmativo}
-              </div>
-              <div className="text-xs text-green-600">Afirmativos</div>
-            </div>
-            <div className="rounded-lg bg-red-50 p-3 text-center">
-              <div className="text-2xl font-bold text-red-700">
-                {totales.negativo}
-              </div>
-              <div className="text-xs text-red-600">Negativos</div>
-            </div>
-            <div className="rounded-lg bg-gray-100 p-3 text-center">
-              <div className="text-2xl font-bold text-gray-600">
-                {totales.ausente}
-              </div>
-              <div className="text-xs text-gray-500">Ausentes</div>
-            </div>
-          </div>
-        ) : proyecto.resultado ? (
-          <div className="mt-6">
-            <div className="flex items-center gap-4">
-              <span
-                className={`rounded-full px-4 py-1.5 text-sm font-semibold ${
-                  proyecto.resultado === 'afirmativa'
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-red-100 text-red-800'
-                }`}
-              >
-                {proyecto.resultado === 'afirmativa' ? 'Aprobada' : 'Rechazada'}
+              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                confianza {votacion.nivelConfianza}
               </span>
-              {proyecto.resultadoAfirmativos != null && proyecto.resultadoTotal != null && (
-                <span className="text-lg text-gray-600">
-                  {proyecto.resultadoAfirmativos} en {proyecto.resultadoTotal} votos
-                </span>
-              )}
-              {proyecto.unanimidad && (
-                <span className="rounded-full bg-blue-50 px-3 py-1 text-sm text-blue-700">
-                  Unanimidad
-                </span>
-              )}
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+                {votacion.estadoCobertura}
+              </span>
             </div>
-            <p className="mt-3 text-sm text-gray-500">
-              Votacion agregada — no se registraron votos individuales.
-            </p>
-          </div>
-        ) : null}
-      </div>
 
-      {/* Desglose por partido */}
-      <div className="mb-8 rounded-xl bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-xl font-bold text-gray-900">
-          Votacion por partido
-        </h2>
-        <DesglosePartido
-          votos={votosProyecto.map((v) => ({
-            partidoNombre: v.partidoNombre,
-            partidoSigla: v.partidoSigla,
-            partidoColor: v.partidoColor,
-            voto: v.voto as TipoVoto,
-          }))}
-        />
-      </div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-4">
+              <div className="rounded-lg bg-slate-50 p-3">
+                <div className="text-sm text-gray-500">Resultado</div>
+                <div className="font-semibold text-gray-900">{votacion.resultado ?? 'Sin dato'}</div>
+              </div>
+              <div className="rounded-lg bg-green-50 p-3">
+                <div className="text-sm text-green-700">Afirmativos</div>
+                <div className="font-semibold text-green-800">{votacion.afirmativos ?? '-'}</div>
+              </div>
+              <div className="rounded-lg bg-red-50 p-3">
+                <div className="text-sm text-red-700">Negativos</div>
+                <div className="font-semibold text-red-800">{votacion.negativos ?? '-'}</div>
+              </div>
+              <div className="rounded-lg bg-slate-50 p-3">
+                <div className="text-sm text-gray-500">Presentes</div>
+                <div className="font-semibold text-gray-900">{votacion.totalPresentes ?? '-'}</div>
+              </div>
+            </div>
 
-      {/* Lista completa de votos */}
-      <div className="rounded-xl bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-xl font-bold text-gray-900">
-          Todos los votos
-        </h2>
-        {votosProyecto.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 text-xs font-semibold tracking-wide text-gray-500 uppercase">
-                  <th className="px-4 py-3">Legislador/a</th>
-                  <th className="px-4 py-3">Partido</th>
-                  <th className="px-4 py-3">Voto</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {votosProyecto.map((v) => (
-                  <tr key={v.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <Link
-                        href={`/legislador/${v.legisladorId}`}
-                        className="text-[#002868] hover:underline"
-                      >
-                        {v.legisladorNombre}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className="rounded-full px-2 py-0.5 text-xs font-medium text-white"
-                        style={{
-                          backgroundColor: v.partidoColor || '#6b7280',
-                        }}
-                      >
-                        {v.partidoSigla}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <IndicadorVoto voto={v.voto as TipoVoto} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="py-8 text-center text-gray-500">
-            No se encontraron votos para este proyecto.
-          </p>
-        )}
+            {votacion.votosIndividuales.length > 0 ? (
+              <>
+                <div className="mt-6">
+                  <h3 className="mb-3 text-lg font-semibold text-gray-900">Desglose por partido</h3>
+                  <DesglosePartido
+                    votos={votacion.votosIndividuales.map((voto) => ({
+                      partidoNombre: voto.legislador.partido.nombre,
+                      partidoSigla: voto.legislador.partido.sigla,
+                      partidoColor: voto.legislador.partido.color,
+                      voto: voto.voto as TipoVoto,
+                    }))}
+                  />
+                </div>
+
+                <div className="mt-6 overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 text-xs font-semibold tracking-wide text-gray-500 uppercase">
+                        <th className="px-4 py-3">Legislador/a</th>
+                        <th className="px-4 py-3">Partido</th>
+                        <th className="px-4 py-3">Confianza</th>
+                        <th className="px-4 py-3">Voto</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {votacion.votosIndividuales.map((voto) => (
+                        <tr key={voto.id}>
+                          <td className="px-4 py-3">
+                            <Link href={`/legislador/${voto.legislador.id}`} className="text-[#002868] hover:underline">
+                              {voto.legislador.nombre}
+                            </Link>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className="rounded-full px-2 py-0.5 text-xs font-medium text-white"
+                              style={{ backgroundColor: voto.legislador.partido.color || '#6b7280' }}
+                            >
+                              {voto.legislador.partido.sigla}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+                              {voto.nivelConfianza}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <IndicadorVoto voto={voto.voto as TipoVoto} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <p className="mt-6 text-sm text-gray-500">
+                Esta votación solo tiene resultado agregado o no publica desglose individual.
+              </p>
+            )}
+          </section>
+        ))}
       </div>
     </div>
   )

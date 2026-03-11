@@ -1,64 +1,47 @@
-import { eq, and } from 'drizzle-orm'
-import { legisladores, legislaturas, sesiones } from '@como-voto-uy/shared'
-import type { DB } from '../db/conexion.js'
-import { crearConexion } from '../db/conexion.js'
-import { pushearSchema } from '../db/migraciones.js'
-import { seedPartidos } from '../seed/partidos.js'
-import { seedLegislaturas } from '../seed/legislaturas.js'
+import { and, eq } from 'drizzle-orm'
 import {
-  obtenerVotacionesRepresentantes,
-  obtenerDiariosSesiones,
-  descargarDiarioPdf,
-} from '../scraper/votaciones-representantes.js'
-import type { VotacionRepresentantes } from '../scraper/votaciones-representantes.js'
+  legisladores,
+  legislaturas,
+  sesiones,
+} from '@como-voto-uy/shared'
+import { crearConexion } from '../db/conexion.js'
+import type { DB } from '../db/conexion.js'
+import { pushearSchema } from '../db/migraciones.js'
+import { cargarSesion } from './cargador-sesion.js'
+import type { DatosSesion, DatosVotacion } from './cargador-sesion.js'
 import {
   extraerVotacionesDiario,
   matchearVotaciones,
 } from '../parser/parser-diario-representantes.js'
 import type { VotacionMatcheada } from '../parser/parser-diario-representantes.js'
 import { seedLegisladoresRepresentantes } from '../seed/legisladores-representantes.js'
-import { cargarSesion } from './cargador-sesion.js'
-import type { DatosSesion, DatosProyecto } from './cargador-sesion.js'
+import { seedLegislaturas } from '../seed/legislaturas.js'
+import { seedPartidos } from '../seed/partidos.js'
+import {
+  descargarDiarioPdf,
+  obtenerDiariosSesiones,
+  obtenerVotacionesRepresentantes,
+} from '../scraper/votaciones-representantes.js'
+import type { VotacionRepresentantes } from '../scraper/votaciones-representantes.js'
 
-export interface ResultadoRepresentantes {
-  sesionesNuevas: number
-  sesionesOmitidas: number
-  sesionesConError: number
-  votacionesCargadas: number
-  votosIndividuales: number
-  errores: string[]
-}
-
-/**
- * Agrupa votaciones del JSON por sesión.
- */
 function agruparPorSesion(
   votaciones: VotacionRepresentantes[],
 ): Map<number, VotacionRepresentantes[]> {
   const grupos = new Map<number, VotacionRepresentantes[]>()
-  for (const v of votaciones) {
-    const sesion = v.Sesion
-    if (!grupos.has(sesion)) grupos.set(sesion, [])
-    grupos.get(sesion)!.push(v)
+  for (const votacion of votaciones) {
+    const grupo = grupos.get(votacion.Sesion) ?? []
+    grupo.push(votacion)
+    grupos.set(votacion.Sesion, grupo)
   }
   return grupos
 }
 
-/**
- * Convierte fecha de formato "2025/03/12" a "2025-03-12"
- */
 function normalizarFecha(fecha: string): string {
   return fecha.replace(/\//g, '-')
 }
 
-/**
- * Busca el ID de un legislador por nombre exacto.
- */
-function buscarLegisladorId(
-  db: DB,
-  nombre: string,
-): number | null {
-  const leg = db
+function buscarLegisladorId(db: DB, nombre: string): number | null {
+  const legislador = db
     .select({ id: legisladores.id })
     .from(legisladores)
     .where(
@@ -69,56 +52,93 @@ function buscarLegisladorId(
     )
     .get()
 
-  return leg?.id ?? null
+  return legislador?.id ?? null
 }
 
-/**
- * Convierte votaciones matcheadas a DatosProyecto para cargar en DB.
- */
-function votacionesAProyectos(
+export function votacionesAModeloNuevo(
   db: DB,
   votacionesMatcheadas: VotacionMatcheada[],
-): { proyectos: DatosProyecto[]; votosCount: number } {
-  const proyectos: DatosProyecto[] = []
+): { votaciones: DatosVotacion[]; votosCount: number } {
   let votosCount = 0
 
-  for (const vm of votacionesMatcheadas) {
-    const votosDb: DatosProyecto['votos'] = []
+  const votaciones = votacionesMatcheadas.map((vm, indice) => {
+    const votosIndividuales = [
+      ...vm.listaSi
+        .map((nombre) => buscarLegisladorId(db, nombre))
+        .filter((id): id is number => id !== null)
+        .map((legisladorId) => ({
+          legisladorId,
+          voto: 'afirmativo' as const,
+          nivelConfianza: 'confirmado' as const,
+          esOficial: true,
+        })),
+      ...vm.listaNo
+        .map((nombre) => buscarLegisladorId(db, nombre))
+        .filter((id): id is number => id !== null)
+        .map((legisladorId) => ({
+          legisladorId,
+          voto: 'negativo' as const,
+          nivelConfianza: 'confirmado' as const,
+          esOficial: true,
+        })),
+    ]
 
-    for (const nombre of vm.listaSi) {
-      const legisladorId = buscarLegisladorId(db, nombre)
-      if (legisladorId) {
-        votosDb.push({ legisladorId, voto: 'afirmativo' })
-      }
-    }
+    votosCount += votosIndividuales.length
 
-    for (const nombre of vm.listaNo) {
-      const legisladorId = buscarLegisladorId(db, nombre)
-      if (legisladorId) {
-        votosDb.push({ legisladorId, voto: 'negativo' })
-      }
-    }
+    const nombreGenerico = /^Votación\s+\d+$/i.test(vm.nombreProyecto)
+    const asunto = nombreGenerico
+      ? null
+      : {
+          nombre: vm.nombreProyecto,
+        }
 
-    votosCount += votosDb.length
-
-    proyectos.push({
-      nombre: vm.nombreProyecto,
-      votos: votosDb,
-      resultadoAfirmativos: vm.siVoto,
-      resultadoTotal: vm.siVoto + vm.noVoto,
+    return {
+      asunto,
+      ordenSesion: indice + 1,
+      modalidad: 'electronica' as const,
+      estadoCobertura: 'individual_confirmado' as const,
+      nivelConfianza: nombreGenerico ? 'medio' : 'alto',
+      esOficial: true,
       resultado: vm.siVoto > vm.noVoto ? 'afirmativa' : 'negativa',
-      unanimidad: vm.noVoto === 0,
-    })
-  }
+      fuentePrincipal: {
+        tipo: 'json' as const,
+        url: 'https://documentos.diputados.gub.uy/docs/DAvotaciones.json',
+      },
+      votosIndividuales,
+      resultadoAgregado: {
+        afirmativos: vm.siVoto,
+        negativos: vm.noVoto,
+        totalPresentes: vm.siVoto + vm.noVoto,
+        unanimidad: vm.noVoto === 0,
+        resultado: vm.siVoto > vm.noVoto ? 'afirmativa' : 'negativa',
+      },
+      evidencias: nombreGenerico
+        ? []
+        : [
+            {
+              tipo: 'texto' as const,
+              texto: vm.nombreProyecto,
+              detalle: 'Nombre de asunto inferido desde el diario de sesiones',
+            },
+          ],
+    } satisfies DatosVotacion
+  })
 
-  return { proyectos, votosCount }
+  return { votaciones, votosCount }
 }
 
-/**
- * Ejecuta el pipeline de representantes: seed → fetch → match → load.
- */
+export interface ResultadoRepresentantes {
+  sesionesNuevas: number
+  sesionesOmitidas: number
+  sesionesConError: number
+  votacionesCargadas: number
+  votosIndividuales: number
+  errores: string[]
+}
+
 export async function ejecutarPipelineRepresentantes(
   rutaDb: string,
+  opciones?: { resetearDb?: boolean },
 ): Promise<ResultadoRepresentantes> {
   const resultado: ResultadoRepresentantes = {
     sesionesNuevas: 0,
@@ -129,136 +149,107 @@ export async function ejecutarPipelineRepresentantes(
     errores: [],
   }
 
-  // 1. Preparar DB
   const { db, sqlite } = crearConexion(rutaDb)
-  pushearSchema(sqlite)
+  if (opciones?.resetearDb ?? true) {
+    pushearSchema(sqlite)
+  }
   seedPartidos(db)
   seedLegislaturas(db)
 
-  // 2. Fetch votaciones JSON
-  console.log('Descargando votaciones de Representantes...')
   const votacionesJson = await obtenerVotacionesRepresentantes()
-  console.log(`  ${votacionesJson.length} votaciones obtenidas`)
-
-  // 3. Seed legisladores desde JSON
   await seedLegisladoresRepresentantes(db, votacionesJson)
 
-  // 4. Fetch diario de sesiones
-  console.log('Descargando índice de diarios de sesiones...')
   const diarios = await obtenerDiariosSesiones()
-  console.log(`  ${diarios.length} diarios indexados`)
-
-  // 5. Obtener legislatura ID
   const legislatura = db
-    .select()
+    .select({ id: legislaturas.id })
     .from(legislaturas)
     .where(eq(legislaturas.numero, 50))
     .get()
 
   if (!legislatura) {
-    throw new Error('Legislatura 50 no encontrada en la base de datos')
+    throw new Error('Legislatura 50 no encontrada')
   }
 
-  // 6. Procesar por sesión
   const porSesion = agruparPorSesion(votacionesJson)
-  console.log(`  ${porSesion.size} sesiones con votaciones electrónicas`)
 
-  for (const [numSesion, votsSesion] of porSesion) {
-    const fecha = normalizarFecha(votsSesion[0].SesionFecha)
-
-    // Verificar si ya existe
+  for (const [numeroSesion, votacionesSesion] of porSesion) {
     const sesionExistente = db
-      .select()
+      .select({ id: sesiones.id })
       .from(sesiones)
       .where(
         and(
           eq(sesiones.legislaturaId, legislatura.id),
-          eq(sesiones.camara, 'representantes'),
-          eq(sesiones.numero, numSesion),
+          eq(sesiones.cuerpo, 'representantes'),
+          eq(sesiones.numero, numeroSesion),
         ),
       )
       .get()
 
     if (sesionExistente) {
-      console.log(`  Sesión ${numSesion} ya existe, omitiendo.`)
       resultado.sesionesOmitidas++
       continue
     }
 
     try {
-      console.log(`  Procesando sesión ${numSesion} (${fecha}, ${votsSesion.length} votaciones)...`)
+      const fecha = normalizarFecha(votacionesSesion[0].SesionFecha)
+      const diario = diarios.find((item) => item.Sesion === numeroSesion)
 
-      // Buscar diario PDF para esta sesión
-      const diario = diarios.find((d) => d.Sesion === numSesion)
       let votacionesMatcheadas: VotacionMatcheada[]
-
       if (diario) {
         try {
-          console.log(`    Descargando diario ${diario.Diario} (${diario.URL})...`)
           const textoPdf = await descargarDiarioPdf(diario.URL)
           const votacionesDiario = extraerVotacionesDiario(textoPdf)
-          console.log(`    ${votacionesDiario.length} votaciones encontradas en el diario`)
-          votacionesMatcheadas = matchearVotaciones(votsSesion, votacionesDiario)
-        } catch (error) {
-          const msg = error instanceof Error ? error.message : String(error)
-          console.warn(`    Error descargando diario: ${msg}. Usando nombres genéricos.`)
-          votacionesMatcheadas = votsSesion.map((v) => ({
-            sesion: v.Sesion,
-            fecha: v.SesionFecha,
-            votacionNumero: v.Votacion,
-            siVoto: parseInt(v.SiVoto, 10),
-            noVoto: parseInt(v.NoVoto, 10),
-            listaSi: v.Lista_Si,
-            listaNo: v.Lista_No,
-            nombreProyecto: `Votación ${v.Votacion}`,
+          votacionesMatcheadas = matchearVotaciones(votacionesSesion, votacionesDiario)
+        } catch {
+          votacionesMatcheadas = votacionesSesion.map((votacion) => ({
+            sesion: votacion.Sesion,
+            fecha: votacion.SesionFecha,
+            votacionNumero: votacion.Votacion,
+            siVoto: parseInt(votacion.SiVoto, 10),
+            noVoto: parseInt(votacion.NoVoto, 10),
+            listaSi: votacion.Lista_Si,
+            listaNo: votacion.Lista_No,
+            nombreProyecto: `Votación ${votacion.Votacion}`,
           }))
         }
       } else {
-        console.log(`    No se encontró diario para sesión ${numSesion}. Usando nombres genéricos.`)
-        votacionesMatcheadas = votsSesion.map((v) => ({
-          sesion: v.Sesion,
-          fecha: v.SesionFecha,
-          votacionNumero: v.Votacion,
-          siVoto: parseInt(v.SiVoto, 10),
-          noVoto: parseInt(v.NoVoto, 10),
-          listaSi: v.Lista_Si,
-          listaNo: v.Lista_No,
-          nombreProyecto: `Votación ${v.Votacion}`,
+        votacionesMatcheadas = votacionesSesion.map((votacion) => ({
+          sesion: votacion.Sesion,
+          fecha: votacion.SesionFecha,
+          votacionNumero: votacion.Votacion,
+          siVoto: parseInt(votacion.SiVoto, 10),
+          noVoto: parseInt(votacion.NoVoto, 10),
+          listaSi: votacion.Lista_Si,
+          listaNo: votacion.Lista_No,
+          nombreProyecto: `Votación ${votacion.Votacion}`,
         }))
       }
 
-      // Convertir a datos de sesión y cargar
-      const { proyectos, votosCount } = votacionesAProyectos(db, votacionesMatcheadas)
+      const { votaciones, votosCount } = votacionesAModeloNuevo(db, votacionesMatcheadas)
 
       const datosSesion: DatosSesion = {
         legislaturaId: legislatura.id,
-        camara: 'representantes',
+        cuerpo: 'representantes',
         fecha,
-        numero: numSesion,
-        proyectos,
+        numero: numeroSesion,
+        fuente: {
+          tipo: 'json',
+          url: 'https://documentos.diputados.gub.uy/docs/DAvotaciones.json',
+        },
+        votaciones,
       }
 
       cargarSesion(db, datosSesion)
 
       resultado.sesionesNuevas++
-      resultado.votacionesCargadas += votacionesMatcheadas.length
+      resultado.votacionesCargadas += votaciones.length
       resultado.votosIndividuales += votosCount
-      console.log(`    Cargada: ${proyectos.length} proyectos, ${votosCount} votos individuales`)
     } catch (error) {
       const mensaje = error instanceof Error ? error.message : String(error)
-      console.error(`    Error procesando sesión ${numSesion}: ${mensaje}`)
-      resultado.errores.push(`Sesión ${numSesion}: ${mensaje}`)
       resultado.sesionesConError++
+      resultado.errores.push(`Sesión ${numeroSesion}: ${mensaje}`)
     }
   }
-
-  // 7. Resumen
-  console.log('\n--- Resultado pipeline Representantes ---')
-  console.log(`Sesiones nuevas: ${resultado.sesionesNuevas}`)
-  console.log(`Sesiones omitidas: ${resultado.sesionesOmitidas}`)
-  console.log(`Sesiones con error: ${resultado.sesionesConError}`)
-  console.log(`Votaciones cargadas: ${resultado.votacionesCargadas}`)
-  console.log(`Votos individuales: ${resultado.votosIndividuales}`)
 
   sqlite.close()
   return resultado

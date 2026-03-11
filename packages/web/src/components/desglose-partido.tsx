@@ -13,6 +13,7 @@ interface DesglosePartido {
   color: string
   afirmativos: number
   negativos: number
+  abstenciones: number
   ausentes: number
   total: number
 }
@@ -27,6 +28,7 @@ export function DesglosePartido({ votos }: { votos: VotoPorPartido[] }) {
           color: v.partidoColor,
           afirmativos: 0,
           negativos: 0,
+          abstenciones: 0,
           ausentes: 0,
           total: 0,
         }
@@ -36,6 +38,8 @@ export function DesglosePartido({ votos }: { votos: VotoPorPartido[] }) {
           ? 'afirmativos'
           : v.voto === 'negativo'
             ? 'negativos'
+            : v.voto === 'abstencion'
+              ? 'abstenciones'
             : 'ausentes'
       ]++
       acc[v.partidoNombre].total++
@@ -95,6 +99,15 @@ export function DesglosePartido({ votos }: { votos: VotoPorPartido[] }) {
                 {p.ausentes}
               </div>
             )}
+            {p.abstenciones > 0 && (
+              <div
+                className="flex items-center justify-center bg-yellow-500 text-xs font-medium text-white"
+                style={{ width: `${(p.abstenciones / p.total) * 100}%` }}
+                title={`${p.abstenciones} abstenciones`}
+              >
+                {p.abstenciones}
+              </div>
+            )}
           </div>
         </div>
       ))}
@@ -110,6 +123,10 @@ export function DesglosePartido({ votos }: { votos: VotoPorPartido[] }) {
         <span className="flex items-center gap-1">
           <span className="inline-block h-3 w-3 rounded-full bg-gray-400" />{' '}
           Ausente
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-3 w-3 rounded-full bg-yellow-500" />{' '}
+          Abstención
         </span>
       </div>
     </div>

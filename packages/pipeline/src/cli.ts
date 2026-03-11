@@ -124,7 +124,11 @@ async function main() {
         legislatura,
         rutaDb: config.rutaDb,
         limite,
+        resetearDb: true,
       })
+      if (camara === 'representantes' && legislatura === 50) {
+        await ejecutarPipelineRepresentantes(config.rutaDb, { resetearDb: false })
+      }
       console.log(
         `\nPipeline completado: ${resultado.sesionesNuevas} sesiones nuevas, ${resultado.votacionesExtraidas} votaciones`,
       )
@@ -132,7 +136,7 @@ async function main() {
     }
 
     case 'representantes': {
-      const resultado = await ejecutarPipelineRepresentantes(config.rutaDb)
+      const resultado = await ejecutarPipelineRepresentantes(config.rutaDb, { resetearDb: true })
       console.log(
         `\nRepresentantes completado: ${resultado.sesionesNuevas} sesiones, ${resultado.votosIndividuales} votos individuales`,
       )

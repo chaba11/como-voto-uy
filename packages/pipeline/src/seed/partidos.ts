@@ -10,6 +10,7 @@ const PARTIDOS = [
   { nombre: 'Partido Independiente', sigla: 'PI', color: '#FFD700' },
   { nombre: 'Partido Ecologista Radical Intransigente', sigla: 'PERI', color: '#228B22' },
   { nombre: 'Unidad Popular', sigla: 'UP', color: '#CC0000' },
+  { nombre: 'Sin asignar', sigla: 'SA', color: '#999999' },
 ] as const
 
 export function seedPartidos(db: DB) {

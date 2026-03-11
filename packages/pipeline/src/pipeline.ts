@@ -1,87 +1,74 @@
-import { eq, and } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import {
-  sesiones,
   legisladores,
   legislaturas,
-  MIEMBROS_POR_CAMARA,
+  partidos,
+  sesiones,
+  type Camara,
+  type CuerpoLegislativo,
+  type NivelConfianzaVoto,
 } from '@como-voto-uy/shared'
-import type { Camara } from '@como-voto-uy/shared'
 import { crearConexion } from './db/conexion.js'
-import { pushearSchema } from './db/migraciones.js'
-import { seedPartidos } from './seed/partidos.js'
-import { seedLegislaturas } from './seed/legislaturas.js'
-import { seedLegisladores } from './seed/legisladores.js'
-import { obtenerListadoSesiones } from './scraper/listado.js'
-import { descargarDocumento } from './scraper/descargador.js'
-import { parsearTaquigrafica } from './parser/index.js'
-import { buscarLegislador } from './parser/normalizador-nombres.js'
-import { cargarSesion } from './loader/cargador-sesion.js'
-import type { DatosSesion, DatosProyecto } from './loader/cargador-sesion.js'
 import type { DB } from './db/conexion.js'
+import { pushearSchema } from './db/migraciones.js'
+import { cargarSesion } from './loader/cargador-sesion.js'
+import type { DatosSesion, DatosVotacion } from './loader/cargador-sesion.js'
+import { buscarLegislador } from './parser/normalizador-nombres.js'
+import { parsearTaquigrafica } from './parser/index.js'
 import type { VotacionExtraida } from './parser/tipos-parser.js'
+import { descargarDocumento } from './scraper/descargador.js'
+import { obtenerListadoSesiones } from './scraper/listado.js'
+import { seedLegisladores } from './seed/legisladores.js'
+import { seedLegislaturas } from './seed/legislaturas.js'
+import { seedPartidos } from './seed/partidos.js'
 
-/**
- * Extrae un nombre legible del texto de contexto de una votación.
- */
 function limpiarTextoContexto(texto: string): string {
-  // Remove line breaks, collapse whitespace
   let limpio = texto.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim()
 
-  // Try to find the most relevant sentence before "(Se vota)"
-  const seVotaIdx = limpio.indexOf('Se va a votar')
-  if (seVotaIdx === -1) {
-    const seVota2 = limpio.indexOf('(Se vota)')
-    if (seVota2 > 0) {
-      limpio = limpio.slice(0, seVota2).trim()
-    }
-  } else {
-    limpio = limpio.slice(0, seVotaIdx).trim()
+  const seVota = limpio.search(/(?:Se va a votar|\(Se vota\))/i)
+  if (seVota > 0) {
+    limpio = limpio.slice(0, seVota).trim()
   }
 
-  // Take last meaningful sentence (skip attendance/procedural text)
-  const oraciones = limpio.split(/[.]\s+/).filter((s) => s.length > 10)
+  const oraciones = limpio.split(/[.]\s+/).filter((s) => s.trim().length > 10)
   if (oraciones.length > 0) {
     limpio = oraciones[oraciones.length - 1].trim()
   }
 
-  // Remove leading dashes, numbers
-  limpio = limpio.replace(/^[\d\s)–\-]+/, '').trim()
-
-  return limpio.slice(0, 200) || 'Votación sin identificar'
+  return limpio.replace(/^[\d\s)\-–—]+/, '').trim().slice(0, 240) || 'Votación sin identificar'
 }
 
-export interface OpcionesPipeline {
-  camara: Camara
-  legislatura: number
-  rutaDb: string
-  limite?: number // máximo de sesiones a procesar
+function cuerpoDesdeCamara(camara: Camara): CuerpoLegislativo {
+  return camara
 }
 
-export interface ResultadoPipeline {
-  sesionesListadas: number
-  sesionesNuevas: number
-  sesionesOmitidas: number
-  sesionesConError: number
-  votacionesExtraidas: number
-  errores: string[]
+function obtenerLegislaturaId(db: DB, numero: number): number {
+  const legislatura = db
+    .select({ id: legislaturas.id })
+    .from(legislaturas)
+    .where(eq(legislaturas.numero, numero))
+    .get()
+
+  if (!legislatura) {
+    throw new Error(`Legislatura ${numero} no encontrada`)
+  }
+
+  return legislatura.id
 }
 
-/**
- * Verifica si una sesión ya existe en la base de datos.
- */
 function sesionExiste(
   db: DB,
   legislaturaId: number,
-  camara: Camara,
+  cuerpo: CuerpoLegislativo,
   numero: number,
 ): boolean {
   const existente = db
-    .select()
+    .select({ id: sesiones.id })
     .from(sesiones)
     .where(
       and(
         eq(sesiones.legislaturaId, legislaturaId),
-        eq(sesiones.camara, camara),
+        eq(sesiones.cuerpo, cuerpo),
         eq(sesiones.numero, numero),
       ),
     )
@@ -90,26 +77,6 @@ function sesionExiste(
   return !!existente
 }
 
-/**
- * Obtiene el ID de la legislatura por su número.
- */
-function obtenerLegislaturaId(db: DB, numero: number): number {
-  const leg = db
-    .select()
-    .from(legislaturas)
-    .where(eq(legislaturas.numero, numero))
-    .get()
-
-  if (!leg) {
-    throw new Error(`Legislatura ${numero} no encontrada en la base de datos`)
-  }
-
-  return leg.id
-}
-
-/**
- * Obtiene los legisladores de la cámara para mapear votos.
- */
 function obtenerLegisladoresCamara(
   db: DB,
   camara: Camara,
@@ -121,47 +88,143 @@ function obtenerLegisladoresCamara(
     .all()
 }
 
-/**
- * Convierte una votación parseada en datos de proyecto para cargar en la DB.
- */
-function votacionADatosProyecto(
+function obtenerPartidoSinAsignar(db: DB): number {
+  const partido = db
+    .select({ id: partidos.id })
+    .from(partidos)
+    .where(eq(partidos.sigla, 'SA'))
+    .get()
+
+  if (partido) return partido.id
+
+  const insertado = db
+    .insert(partidos)
+    .values({ nombre: 'Sin asignar', sigla: 'SA', color: '#999999' })
+    .returning({ id: partidos.id })
+    .get()
+
+  return insertado.id
+}
+
+function obtenerOCrearLegislador(
+  db: DB,
+  nombre: string,
+  camara: Camara,
+  cache: { id: number; nombre: string }[],
+): number {
+  const existenteId = buscarLegislador(nombre, cache)
+  if (existenteId !== null) return existenteId
+
+  const insertado = db
+    .insert(legisladores)
+    .values({
+      nombre: nombre.trim(),
+      partidoId: obtenerPartidoSinAsignar(db),
+      camara,
+    })
+    .returning({ id: legisladores.id, nombre: legisladores.nombre })
+    .get()
+
+  cache.push(insertado)
+  return insertado.id
+}
+
+function nivelConfianzaAsunto(votacion: VotacionExtraida): NivelConfianzaVoto {
+  if (votacion.proyecto?.carpeta || votacion.proyecto?.repartido) return 'alto'
+  if (votacion.proyecto?.nombre) return 'alto'
+  return 'medio'
+}
+
+export function votacionADatosVotacion(
+  db: DB,
+  camara: Camara,
   votacion: VotacionExtraida,
   listaLegisladores: { id: number; nombre: string }[],
-): DatosProyecto | null {
-  const nombre =
-    votacion.proyecto?.nombre ||
-    limpiarTextoContexto(votacion.textoContexto) ||
-    'Votación sin identificar'
+  ordenSesion: number,
+  fuenteUrl: string,
+): DatosVotacion {
+  const votosIndividuales = (votacion.votos ?? []).map((voto) => ({
+    legisladorId: obtenerOCrearLegislador(db, voto.nombreLegislador, camara, listaLegisladores),
+    voto: voto.voto,
+    nivelConfianza: 'confirmado' as const,
+    esOficial: true,
+  }))
 
-  const votosDb: DatosProyecto['votos'] = []
+  const resultadoAgregado = votacion.resultado
+    ? {
+        afirmativos: votacion.resultado.afirmativos,
+        negativos:
+          votacion.resultado.total != null && votacion.resultado.afirmativos != null
+            ? votacion.resultado.total - votacion.resultado.afirmativos
+            : undefined,
+        totalPresentes: votacion.resultado.total,
+        unanimidad: votacion.resultado.unanimidad,
+        resultado: votacion.resultado.resultado,
+      }
+    : undefined
 
-  for (const voto of votacion.votos) {
-    const legisladorId = buscarLegislador(voto.nombreLegislador, listaLegisladores)
-    if (legisladorId !== null) {
-      votosDb.push({
-        legisladorId,
-        voto: voto.voto,
-      })
-    }
+  const asunto = {
+    nombre: votacion.proyecto?.nombre || limpiarTextoContexto(votacion.textoContexto),
+    descripcion: votacion.proyecto?.carpeta
+      ? `Carpeta n.º ${votacion.proyecto.carpeta}`
+      : undefined,
+    carpeta: votacion.proyecto?.carpeta,
+    repartido: votacion.proyecto?.repartido,
+    codigoOficial:
+      votacion.proyecto?.carpeta && votacion.proyecto?.repartido
+        ? `${votacion.proyecto.carpeta}-${votacion.proyecto.repartido}`
+        : votacion.proyecto?.carpeta,
   }
 
+  const estadoCobertura = votosIndividuales.length
+    ? 'individual_confirmado'
+    : resultadoAgregado
+      ? 'agregado'
+      : 'sin_desglose_publico'
+
   return {
-    nombre,
-    descripcion: votacion.proyecto?.carpeta
-      ? `Carpeta n.° ${votacion.proyecto.carpeta}`
-      : undefined,
-    tema: undefined,
-    votos: votosDb,
-    resultadoAfirmativos: votacion.resultado?.afirmativos,
-    resultadoTotal: votacion.resultado?.total,
+    asunto,
+    ordenSesion,
+    modalidad: votacion.tipo === 'nominal' ? 'nominal' : 'ordinaria',
+    estadoCobertura,
+    nivelConfianza: votosIndividuales.length ? nivelConfianzaAsunto(votacion) : 'alto',
+    esOficial: true,
     resultado: votacion.resultado?.resultado,
-    unanimidad: votacion.resultado?.unanimidad,
+    fuentePrincipal: {
+      tipo: 'taquigrafica_html',
+      url: fuenteUrl,
+    },
+    votosIndividuales,
+    resultadoAgregado,
+    evidencias: [
+      {
+        tipo: 'texto',
+        texto: limpiarTextoContexto(votacion.textoContexto),
+        detalle: votosIndividuales.length
+          ? 'Contexto de votación nominal en diario oficial'
+          : 'Contexto de resultado agregado en diario oficial',
+      },
+    ],
   }
 }
 
-/**
- * Ejecuta el pipeline completo: scraper -> parser -> loader.
- */
+export interface OpcionesPipeline {
+  camara: Camara
+  legislatura: number
+  rutaDb: string
+  limite?: number
+  resetearDb?: boolean
+}
+
+export interface ResultadoPipeline {
+  sesionesListadas: number
+  sesionesNuevas: number
+  sesionesOmitidas: number
+  sesionesConError: number
+  votacionesExtraidas: number
+  errores: string[]
+}
+
 export async function ejecutarPipeline(
   opciones: OpcionesPipeline,
 ): Promise<ResultadoPipeline> {
@@ -174,110 +237,65 @@ export async function ejecutarPipeline(
     errores: [],
   }
 
-  // 1. Crear/abrir DB, pushear schema, seed
   const { db, sqlite } = crearConexion(opciones.rutaDb)
-  pushearSchema(sqlite)
+  if (opciones.resetearDb ?? true) {
+    pushearSchema(sqlite)
+  }
+
   seedPartidos(db)
   seedLegislaturas(db)
   seedLegisladores(db)
 
   const legislaturaId = obtenerLegislaturaId(db, opciones.legislatura)
+  const cuerpo = cuerpoDesdeCamara(opciones.camara)
   const listaLegisladores = obtenerLegisladoresCamara(db, opciones.camara)
 
-  if (listaLegisladores.length === 0) {
-    console.warn(
-      `No hay legisladores cargados para ${opciones.camara}. Los votos no se podrán mapear.`,
-    )
-  }
-
-  // 2. Obtener listado de sesiones del sitio del parlamento
-  console.log(
-    `Obteniendo listado de sesiones: ${opciones.camara}, legislatura ${opciones.legislatura}...`,
-  )
   const entradas = await obtenerListadoSesiones(opciones.camara, opciones.legislatura)
   resultado.sesionesListadas = entradas.length
-  console.log(`Sesiones encontradas: ${entradas.length}`)
 
-  // Aplicar límite si corresponde
-  const entradasAProcesar = opciones.limite
-    ? entradas.slice(0, opciones.limite)
-    : entradas
+  const entradasAProcesar = opciones.limite ? entradas.slice(0, opciones.limite) : entradas
 
-  // 3. Procesar cada sesión
   for (const entrada of entradasAProcesar) {
-    // Verificar si ya existe
-    if (sesionExiste(db, legislaturaId, opciones.camara, entrada.sesionNumero)) {
-      console.log(`  Sesión ${entrada.sesionNumero} ya existe, omitiendo.`)
+    if (sesionExiste(db, legislaturaId, cuerpo, entrada.sesionNumero)) {
       resultado.sesionesOmitidas++
       continue
     }
 
     try {
-      console.log(
-        `  Procesando sesión ${entrada.sesionNumero} (${entrada.fecha})...`,
-      )
-
-      // a. Descargar documento
       const documento = await descargarDocumento(entrada)
-
-      // b. Parsear votos
       const parseo = parsearTaquigrafica(documento.contenido)
-      console.log(
-        `    Votaciones encontradas: ${parseo.votaciones.length}`,
-      )
 
-      // c. Convertir votaciones a datos de sesión
-      const proyectos: DatosProyecto[] = []
-      for (const votacion of parseo.votaciones) {
-        const datosProyecto = votacionADatosProyecto(votacion, listaLegisladores)
-        if (datosProyecto) {
-          proyectos.push(datosProyecto)
-        }
-      }
+      const votacionesCargables = parseo.votaciones.map((votacion, indice) =>
+        votacionADatosVotacion(
+          db,
+          opciones.camara,
+          votacion,
+          listaLegisladores,
+          indice + 1,
+          entrada.urlDocumentoPagina,
+        ),
+      )
 
       const datosSesion: DatosSesion = {
         legislaturaId,
-        camara: opciones.camara,
+        cuerpo,
         fecha: entrada.fecha,
         numero: entrada.sesionNumero,
         urlTaquigrafica: entrada.urlDocumentoPagina,
-        proyectos,
+        fuente: {
+          tipo: entrada.tipoDocumento === 'pdf' ? 'diario_pdf' : 'taquigrafica_html',
+          url: entrada.urlDocumentoPagina,
+        },
+        votaciones: votacionesCargables,
       }
 
-      // d. Cargar a DB
       cargarSesion(db, datosSesion)
-
       resultado.sesionesNuevas++
       resultado.votacionesExtraidas += parseo.votaciones.length
-
-      console.log(
-        `    Cargada sesión ${entrada.sesionNumero} con ${proyectos.length} proyectos.`,
-      )
     } catch (error) {
-      const mensaje =
-        error instanceof Error ? error.message : String(error)
-      console.error(
-        `    Error procesando sesión ${entrada.sesionNumero}: ${mensaje}`,
-      )
-      resultado.errores.push(
-        `Sesión ${entrada.sesionNumero}: ${mensaje}`,
-      )
+      const mensaje = error instanceof Error ? error.message : String(error)
       resultado.sesionesConError++
-    }
-  }
-
-  // 4. Reportar resultados
-  console.log('\n--- Resultado del pipeline ---')
-  console.log(`Sesiones listadas: ${resultado.sesionesListadas}`)
-  console.log(`Sesiones nuevas cargadas: ${resultado.sesionesNuevas}`)
-  console.log(`Sesiones omitidas (ya existían): ${resultado.sesionesOmitidas}`)
-  console.log(`Sesiones con error: ${resultado.sesionesConError}`)
-  console.log(`Votaciones extraídas: ${resultado.votacionesExtraidas}`)
-
-  if (resultado.errores.length > 0) {
-    console.log('\nErrores:')
-    for (const err of resultado.errores) {
-      console.log(`  - ${err}`)
+      resultado.errores.push(`Sesión ${entrada.sesionNumero}: ${mensaje}`)
     }
   }
 
@@ -285,5 +303,4 @@ export async function ejecutarPipeline(
   return resultado
 }
 
-// Re-exportar utilidades para uso en tests y CLI
-export { votacionADatosProyecto, obtenerLegisladoresCamara, obtenerLegislaturaId }
+export { obtenerLegisladoresCamara, obtenerLegislaturaId }

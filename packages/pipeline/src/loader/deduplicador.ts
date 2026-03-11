@@ -1,16 +1,16 @@
 import { eq, and } from 'drizzle-orm'
 import { sesiones, legisladores } from '@como-voto-uy/shared'
 import type { DB } from '../db/conexion.js'
-import type { Camara } from '@como-voto-uy/shared'
+import type { Camara, CuerpoLegislativo } from '@como-voto-uy/shared'
 
 export function sesionExiste(
   db: DB,
-  camara: Camara,
+  cuerpo: CuerpoLegislativo,
   fecha: string,
   numero?: number
 ): boolean {
   const condiciones = [
-    eq(sesiones.camara, camara),
+    eq(sesiones.cuerpo, cuerpo),
     eq(sesiones.fecha, fecha),
   ]
 
