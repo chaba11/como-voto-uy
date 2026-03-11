@@ -45,8 +45,10 @@ describe('deduplicador', () => {
       contexto.db.insert(legisladores)
         .values({
           nombre: 'Andrade, Oscar',
+          legislaturaId: contexto.ids.legislaturaId,
           partidoId: contexto.ids.partidoFaId,
           camara: 'representantes',
+          origenPartido: 'seed',
         })
         .run()
 

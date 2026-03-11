@@ -51,8 +51,24 @@ export function crearContextoPrueba(): ContextoPrueba {
 
   db.insert(legisladores)
     .values([
-      { id: 1, nombre: 'Andrade, Oscar', partidoId: 1, camara: 'senado', departamento: 'Montevideo' },
-      { id: 2, nombre: 'Bianchi, Graciela', partidoId: 2, camara: 'senado', departamento: 'Montevideo' },
+      {
+        id: 1,
+        nombre: 'Andrade, Oscar',
+        legislaturaId: 1,
+        partidoId: 1,
+        camara: 'senado',
+        departamento: 'Montevideo',
+        origenPartido: 'seed',
+      },
+      {
+        id: 2,
+        nombre: 'Bianchi, Graciela',
+        legislaturaId: 1,
+        partidoId: 2,
+        camara: 'senado',
+        departamento: 'Montevideo',
+        origenPartido: 'seed',
+      },
     ])
     .run()
 
@@ -88,6 +104,7 @@ export function insertarSesionNominal(contexto: ContextoPrueba) {
       {
         asunto: {
           nombre: 'Proyecto de ley de transparencia',
+          calidadTitulo: 'canonico',
           carpeta: '1181',
           repartido: '859',
           codigoOficial: '1181-859',
@@ -145,6 +162,7 @@ export function insertarSesionAgregada(contexto: ContextoPrueba) {
       {
         asunto: {
           nombre: 'Levantamiento del receso',
+          calidadTitulo: 'razonable',
           codigoOficial: 'receso-2025',
         },
         ordenSesion: 1,
@@ -169,9 +187,11 @@ export function insertarSesionRepresentantes(contexto: ContextoPrueba) {
     .insert(legisladores)
     .values({
       nombre: 'Abdala, Pablo D.',
+      legislaturaId: contexto.ids.legislaturaId,
       partidoId: contexto.ids.partidoFaId,
       camara: 'representantes',
       departamento: 'Montevideo',
+      origenPartido: 'padron',
     })
     .returning({ id: legisladores.id })
     .get()
@@ -180,9 +200,11 @@ export function insertarSesionRepresentantes(contexto: ContextoPrueba) {
     .insert(legisladores)
     .values({
       nombre: 'Gandini, Jorge A.',
+      legislaturaId: contexto.ids.legislaturaId,
       partidoId: contexto.ids.partidoPnId,
       camara: 'representantes',
       departamento: 'Montevideo',
+      origenPartido: 'padron',
     })
     .returning({ id: legisladores.id })
     .get()
@@ -200,6 +222,7 @@ export function insertarSesionRepresentantes(contexto: ContextoPrueba) {
       {
         asunto: {
           nombre: 'Proyecto de ley sobre datos abiertos',
+          calidadTitulo: 'canonico',
         },
         ordenSesion: 1,
         modalidad: 'electronica',

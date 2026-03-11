@@ -1,25 +1,26 @@
 import { and, eq } from 'drizzle-orm'
-import {
-  legisladores,
-  legislaturas,
-  sesiones,
-} from '@como-voto-uy/shared'
+import { legisladores, legislaturas, sesiones } from '@como-voto-uy/shared'
 import { crearConexion } from '../db/conexion.js'
 import type { DB } from '../db/conexion.js'
 import { pushearSchema } from '../db/migraciones.js'
 import { cargarSesion } from './cargador-sesion.js'
 import type { DatosSesion, DatosVotacion } from './cargador-sesion.js'
+import { canonizarAsunto } from '../parser/canonizador-asuntos.js'
 import {
   extraerVotacionesDiario,
   matchearVotaciones,
 } from '../parser/parser-diario-representantes.js'
 import type { VotacionMatcheada } from '../parser/parser-diario-representantes.js'
-import { seedLegisladoresRepresentantes } from '../seed/legisladores-representantes.js'
+import {
+  reconciliarLegisladoresSinAsignar,
+  seedLegisladoresRepresentantes,
+} from '../seed/legisladores-representantes.js'
 import { seedLegislaturas } from '../seed/legislaturas.js'
 import { seedPartidos } from '../seed/partidos.js'
 import {
   descargarDiarioPdf,
   obtenerDiariosSesiones,
+  obtenerPadronRepresentantes,
   obtenerVotacionesRepresentantes,
 } from '../scraper/votaciones-representantes.js'
 import type { VotacionRepresentantes } from '../scraper/votaciones-representantes.js'
@@ -40,13 +41,14 @@ function normalizarFecha(fecha: string): string {
   return fecha.replace(/\//g, '-')
 }
 
-function buscarLegisladorId(db: DB, nombre: string): number | null {
+function buscarLegisladorId(db: DB, nombre: string, legislaturaId: number): number | null {
   const legislador = db
     .select({ id: legisladores.id })
     .from(legisladores)
     .where(
       and(
         eq(legisladores.nombre, nombre.trim()),
+        eq(legisladores.legislaturaId, legislaturaId),
         eq(legisladores.camara, 'representantes'),
       ),
     )
@@ -57,14 +59,23 @@ function buscarLegisladorId(db: DB, nombre: string): number | null {
 
 export function votacionesAModeloNuevo(
   db: DB,
+  legislaturaId: number,
   votacionesMatcheadas: VotacionMatcheada[],
 ): { votaciones: DatosVotacion[]; votosCount: number } {
   let votosCount = 0
 
-  const votaciones = votacionesMatcheadas.map((vm, indice) => {
+  const votaciones = votacionesMatcheadas.map((votacionMatcheada, indice) => {
+    const asuntoCanonico = canonizarAsunto({
+      nombreCrudo: votacionMatcheada.nombreProyecto,
+      textoContexto: votacionMatcheada.textoContexto,
+      carpeta: votacionMatcheada.carpeta,
+      repartido: votacionMatcheada.repartido,
+      tipoAsunto: 'proyecto_ley',
+    })
+
     const votosIndividuales = [
-      ...vm.listaSi
-        .map((nombre) => buscarLegisladorId(db, nombre))
+      ...votacionMatcheada.listaSi
+        .map((nombre) => buscarLegisladorId(db, nombre, legislaturaId))
         .filter((id): id is number => id !== null)
         .map((legisladorId) => ({
           legisladorId,
@@ -72,8 +83,8 @@ export function votacionesAModeloNuevo(
           nivelConfianza: 'confirmado' as const,
           esOficial: true,
         })),
-      ...vm.listaNo
-        .map((nombre) => buscarLegisladorId(db, nombre))
+      ...votacionMatcheada.listaNo
+        .map((nombre) => buscarLegisladorId(db, nombre, legislaturaId))
         .filter((id): id is number => id !== null)
         .map((legisladorId) => ({
           legisladorId,
@@ -85,42 +96,47 @@ export function votacionesAModeloNuevo(
 
     votosCount += votosIndividuales.length
 
-    const nombreGenerico = /^Votación\s+\d+$/i.test(vm.nombreProyecto)
-    const asunto = nombreGenerico
-      ? null
-      : {
-          nombre: vm.nombreProyecto,
-        }
-
     return {
-      asunto,
+      asunto: {
+        nombre: asuntoCanonico.nombre,
+        calidadTitulo: asuntoCanonico.calidadTitulo,
+        descripcion: asuntoCanonico.descripcion,
+        carpeta: votacionMatcheada.carpeta,
+        repartido: votacionMatcheada.repartido,
+        tipoAsunto: asuntoCanonico.tipoAsunto ?? 'proyecto_ley',
+        codigoOficial:
+          votacionMatcheada.carpeta && votacionMatcheada.repartido
+            ? `${votacionMatcheada.carpeta}-${votacionMatcheada.repartido}`
+            : votacionMatcheada.carpeta,
+      },
       ordenSesion: indice + 1,
       modalidad: 'electronica' as const,
       estadoCobertura: 'individual_confirmado' as const,
-      nivelConfianza: nombreGenerico ? 'medio' : 'alto',
+      nivelConfianza: asuntoCanonico.calidadTitulo === 'canonico' ? 'alto' : 'medio',
       esOficial: true,
-      resultado: vm.siVoto > vm.noVoto ? 'afirmativa' : 'negativa',
+      resultado: votacionMatcheada.siVoto > votacionMatcheada.noVoto ? 'afirmativa' : 'negativa',
       fuentePrincipal: {
         tipo: 'json' as const,
         url: 'https://documentos.diputados.gub.uy/docs/DAvotaciones.json',
       },
       votosIndividuales,
       resultadoAgregado: {
-        afirmativos: vm.siVoto,
-        negativos: vm.noVoto,
-        totalPresentes: vm.siVoto + vm.noVoto,
-        unanimidad: vm.noVoto === 0,
-        resultado: vm.siVoto > vm.noVoto ? 'afirmativa' : 'negativa',
+        afirmativos: votacionMatcheada.siVoto,
+        negativos: votacionMatcheada.noVoto,
+        totalPresentes: votacionMatcheada.siVoto + votacionMatcheada.noVoto,
+        unanimidad: votacionMatcheada.noVoto === 0,
+        resultado:
+          votacionMatcheada.siVoto > votacionMatcheada.noVoto ? 'afirmativa' : 'negativa',
       },
-      evidencias: nombreGenerico
-        ? []
-        : [
+      evidencias: votacionMatcheada.textoContexto
+        ? [
             {
               tipo: 'texto' as const,
-              texto: vm.nombreProyecto,
-              detalle: 'Nombre de asunto inferido desde el diario de sesiones',
+              texto: votacionMatcheada.textoContexto,
+              detalle: 'Título y contexto inferidos desde el diario de sesiones',
             },
-          ],
+          ]
+        : [],
     } satisfies DatosVotacion
   })
 
@@ -133,6 +149,7 @@ export interface ResultadoRepresentantes {
   sesionesConError: number
   votacionesCargadas: number
   votosIndividuales: number
+  legisladoresReconciliados: number
   errores: string[]
 }
 
@@ -146,6 +163,7 @@ export async function ejecutarPipelineRepresentantes(
     sesionesConError: 0,
     votacionesCargadas: 0,
     votosIndividuales: 0,
+    legisladoresReconciliados: 0,
     errores: [],
   }
 
@@ -157,7 +175,8 @@ export async function ejecutarPipelineRepresentantes(
   seedLegislaturas(db)
 
   const votacionesJson = await obtenerVotacionesRepresentantes()
-  await seedLegisladoresRepresentantes(db, votacionesJson)
+  const padron = await obtenerPadronRepresentantes().catch(() => [])
+  await seedLegisladoresRepresentantes(db, votacionesJson, padron)
 
   const diarios = await obtenerDiariosSesiones()
   const legislatura = db
@@ -209,7 +228,8 @@ export async function ejecutarPipelineRepresentantes(
             noVoto: parseInt(votacion.NoVoto, 10),
             listaSi: votacion.Lista_Si,
             listaNo: votacion.Lista_No,
-            nombreProyecto: `Votación ${votacion.Votacion}`,
+            nombreProyecto: `Asunto de sesión ${votacion.Sesion} votación ${votacion.Votacion}`,
+            calidadTitulo: 'incompleto',
           }))
         }
       } else {
@@ -221,11 +241,16 @@ export async function ejecutarPipelineRepresentantes(
           noVoto: parseInt(votacion.NoVoto, 10),
           listaSi: votacion.Lista_Si,
           listaNo: votacion.Lista_No,
-          nombreProyecto: `Votación ${votacion.Votacion}`,
+          nombreProyecto: `Asunto de sesión ${votacion.Sesion} votación ${votacion.Votacion}`,
+          calidadTitulo: 'incompleto',
         }))
       }
 
-      const { votaciones, votosCount } = votacionesAModeloNuevo(db, votacionesMatcheadas)
+      const { votaciones, votosCount } = votacionesAModeloNuevo(
+        db,
+        legislatura.id,
+        votacionesMatcheadas,
+      )
 
       const datosSesion: DatosSesion = {
         legislaturaId: legislatura.id,
@@ -250,6 +275,8 @@ export async function ejecutarPipelineRepresentantes(
       resultado.errores.push(`Sesión ${numeroSesion}: ${mensaje}`)
     }
   }
+
+  resultado.legisladoresReconciliados = reconciliarLegisladoresSinAsignar(db, legislatura.id)
 
   sqlite.close()
   return resultado

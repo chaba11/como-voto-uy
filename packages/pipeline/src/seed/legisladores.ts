@@ -1,5 +1,5 @@
-import { eq, and } from 'drizzle-orm'
-import { legisladores, partidos } from '@como-voto-uy/shared'
+import { and, eq } from 'drizzle-orm'
+import { legisladores, legislaturas, partidos } from '@como-voto-uy/shared'
 import type { DB } from '../db/conexion.js'
 
 interface DatoLegislador {
@@ -48,6 +48,15 @@ const SENADORES_LEG50: DatoLegislador[] = [
 
 export function seedLegisladores(db: DB) {
   let insertados = 0
+  const legislatura50 = db
+    .select({ id: legislaturas.id })
+    .from(legislaturas)
+    .where(eq(legislaturas.numero, 50))
+    .get()
+
+  if (!legislatura50) {
+    throw new Error('Legislatura 50 no encontrada para seed de senadores')
+  }
 
   for (const dato of SENADORES_LEG50) {
     // Buscar el partido por sigla
@@ -69,6 +78,7 @@ export function seedLegisladores(db: DB) {
       .where(
         and(
           eq(legisladores.nombre, dato.nombre),
+          eq(legisladores.legislaturaId, legislatura50.id),
           eq(legisladores.camara, dato.camara),
         ),
       )
@@ -78,8 +88,10 @@ export function seedLegisladores(db: DB) {
       db.insert(legisladores)
         .values({
           nombre: dato.nombre,
+          legislaturaId: legislatura50.id,
           partidoId: partido.id,
           camara: dato.camara,
+          origenPartido: 'seed',
         })
         .run()
       insertados++

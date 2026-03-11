@@ -31,13 +31,20 @@ describe('flujo pipeline completo', () => {
     expect(nominal).toBeDefined()
 
     const listaLegisladores = contexto.db
-      .select({ id: legisladores.id, nombre: legisladores.nombre })
+      .select({
+        id: legisladores.id,
+        nombre: legisladores.nombre,
+        camara: legisladores.camara,
+        legislaturaId: legisladores.legislaturaId,
+        partidoId: legisladores.partidoId,
+      })
       .from(legisladores)
       .all()
 
     const datosVotacion = votacionADatosVotacion(
       contexto.db,
       'senado',
+      contexto.ids.legislaturaId,
       nominal!,
       listaLegisladores,
       1,

@@ -17,8 +17,10 @@ describe('cargador votaciones representantes', () => {
       .insert(legisladores)
       .values({
         nombre: 'Abdala, Pablo D.',
+        legislaturaId: contexto.ids.legislaturaId,
         partidoId: contexto.ids.partidoFaId,
         camara: 'representantes',
+        origenPartido: 'padron',
       })
       .returning({ id: legisladores.id })
       .get()
@@ -27,13 +29,15 @@ describe('cargador votaciones representantes', () => {
       .insert(legisladores)
       .values({
         nombre: 'Gandini, Jorge A.',
+        legislaturaId: contexto.ids.legislaturaId,
         partidoId: contexto.ids.partidoPnId,
         camara: 'representantes',
+        origenPartido: 'padron',
       })
       .returning({ id: legisladores.id })
       .get()
 
-    const { votaciones, votosCount } = votacionesAModeloNuevo(contexto.db, [
+    const { votaciones, votosCount } = votacionesAModeloNuevo(contexto.db, contexto.ids.legislaturaId, [
       {
         sesion: 5,
         fecha: '2025/05/05',
@@ -43,6 +47,7 @@ describe('cargador votaciones representantes', () => {
         listaSi: ['Abdala, Pablo D.'],
         listaNo: ['Gandini, Jorge A.'],
         nombreProyecto: 'Proyecto de ley sobre datos abiertos',
+        calidadTitulo: 'canonico',
       },
     ])
 
@@ -50,15 +55,15 @@ describe('cargador votaciones representantes', () => {
     expect(votosCount).toBe(2)
     expect(votaciones[0].modalidad).toBe('electronica')
     expect(votaciones[0].estadoCobertura).toBe('individual_confirmado')
-    expect(votaciones[0].asunto?.nombre).toContain('datos abiertos')
+    expect(votaciones[0].asunto?.nombre).toBe('Datos abiertos')
     expect(votaciones[0].votosIndividuales?.map((v) => v.legisladorId)).toEqual([
       abdala.id,
       gandini.id,
     ])
   })
 
-  it('deja la votación sin asunto cuando el match es genérico', () => {
-    const { votaciones } = votacionesAModeloNuevo(contexto.db, [
+  it('deja el asunto con calidad incompleta cuando el match es genérico', () => {
+    const { votaciones } = votacionesAModeloNuevo(contexto.db, contexto.ids.legislaturaId, [
       {
         sesion: 7,
         fecha: '2025/05/06',
@@ -67,11 +72,12 @@ describe('cargador votaciones representantes', () => {
         noVoto: 40,
         listaSi: [],
         listaNo: [],
-        nombreProyecto: 'Votación 3',
+        nombreProyecto: 'Asunto de sesión 7 votación 3',
+        calidadTitulo: 'incompleto',
       },
     ])
 
-    expect(votaciones[0].asunto).toBeNull()
+    expect(votaciones[0].asunto?.calidadTitulo).toBe('incompleto')
     expect(votaciones[0].nivelConfianza).toBe('medio')
   })
 })

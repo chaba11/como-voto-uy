@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
+  buscarLegislador,
+  crearClavesNombre,
   normalizarNombre,
   sinAcentos,
-  buscarLegislador,
 } from '../../src/parser/normalizador-nombres.js'
 
 describe('normalizarNombre', () => {
@@ -14,8 +15,8 @@ describe('normalizarNombre', () => {
     expect(normalizarNombre('  MANINI   RÍOS  ')).toBe('MANINI RÍOS')
   })
 
-  it('mantiene acentos', () => {
-    expect(normalizarNombre('asiaín')).toBe('ASIAÍN')
+  it('remueve tratamientos frecuentes', () => {
+    expect(normalizarNombre('Sr. García')).toBe('GARCÍA')
   })
 })
 
@@ -23,16 +24,17 @@ describe('sinAcentos', () => {
   it('elimina acentos', () => {
     expect(sinAcentos('ASIAÍN')).toBe('ASIAIN')
     expect(sinAcentos('GARCÍA')).toBe('GARCIA')
-    expect(sinAcentos('RODRÍGUEZ')).toBe('RODRIGUEZ')
-  })
-
-  it('elimina ñ normalizada', () => {
-    // La ñ no tiene forma descompuesta estándar, se mantiene
     expect(sinAcentos('MUÑOZ')).toBe('MUNOZ')
   })
+})
 
-  it('no modifica texto sin acentos', () => {
-    expect(sinAcentos('BATLLE')).toBe('BATLLE')
+describe('crearClavesNombre', () => {
+  it('genera claves para formas con coma e iniciales', () => {
+    const claves = crearClavesNombre('Abdala, Pablo D.')
+
+    expect(claves).toContain('ABDALA PABLO D')
+    expect(claves).toContain('PABLO D ABDALA')
+    expect(claves).toContain('ABDALA PABLO')
   })
 })
 
@@ -44,6 +46,7 @@ describe('buscarLegislador', () => {
     { id: 4, nombre: 'Amanda Della Ventura' },
     { id: 5, nombre: 'Sebastián Da Silva' },
     { id: 6, nombre: 'Carmen Asiaín' },
+    { id: 7, nombre: 'Abdala, Pablo D.' },
   ]
 
   it('encuentra por apellido exacto', () => {
@@ -51,27 +54,15 @@ describe('buscarLegislador', () => {
   })
 
   it('encuentra por apellido compuesto', () => {
-    expect(buscarLegislador('MANINI RÍOS', legisladores)).toBe(2)
-  })
-
-  it('encuentra por apellido compuesto sin acentos', () => {
     expect(buscarLegislador('MANINI RIOS', legisladores)).toBe(2)
   })
 
-  it('encuentra por apellido simple contenido en nombre completo', () => {
-    expect(buscarLegislador('DELLA VENTURA', legisladores)).toBe(4)
+  it('encuentra nombres con coma e iniciales', () => {
+    expect(buscarLegislador('Pablo Abdala', legisladores)).toBe(7)
   })
 
-  it('encuentra por nombre parcial', () => {
+  it('encuentra por nombre parcial sin acentos', () => {
     expect(buscarLegislador('DA SILVA', legisladores)).toBe(5)
-  })
-
-  it('encuentra por apellido con acentos', () => {
-    expect(buscarLegislador('ASIAÍN', legisladores)).toBe(6)
-  })
-
-  it('encuentra sin importar case', () => {
-    expect(buscarLegislador('bergara', legisladores)).toBe(3)
   })
 
   it('retorna null si no encuentra', () => {

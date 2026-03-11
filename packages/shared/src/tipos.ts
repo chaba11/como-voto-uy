@@ -42,11 +42,17 @@ export type TipoFuente =
 
 export type TipoEvidencia = 'texto' | 'timestamp' | 'ocr' | 'nota'
 
+export type CalidadTituloAsunto = 'canonico' | 'razonable' | 'incompleto'
+
+export type OrigenPartidoLegislador = 'seed' | 'padron' | 'inferido' | 'sin_asignar'
+
 export interface LegisladorConPartido {
   id: number
   nombre: string
+  legislaturaId: number
   camara: Camara
   departamento: string | null
+  origenPartido: OrigenPartidoLegislador
   partido: {
     id: number
     nombre: string
@@ -59,6 +65,7 @@ export interface LegisladorConPartido {
 export interface ResumenAsunto {
   id: number
   nombre: string
+  calidadTitulo: CalidadTituloAsunto
   descripcion: string | null
   tema: string | null
   codigoOficial: string | null

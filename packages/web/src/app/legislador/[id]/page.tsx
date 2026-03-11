@@ -28,17 +28,24 @@ export default async function PaginaLegislador({
             <h1 className="text-3xl font-bold text-gray-900">{legislador.nombre}</h1>
             <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-gray-600">
               <span className="capitalize">
-                {legislador.camara === 'senado' ? 'Senador/a' : 'Representante'}
+                {legislador.camara === 'senado' ? 'Senador/a' : 'Diputado/a'}
               </span>
+              <span>Legislatura {legislador.legislaturaId}</span>
               {legislador.departamento && <span>{legislador.departamento}</span>}
             </div>
           </div>
-          <span
-            className="rounded-full px-4 py-1.5 text-sm font-semibold text-white"
-            style={{ backgroundColor: legislador.partido.color || '#6b7280' }}
-          >
-            {legislador.partido.sigla}
-          </span>
+          {legislador.partido.sigla === 'SA' ? (
+            <span className="rounded-full bg-amber-50 px-4 py-1.5 text-sm font-semibold text-amber-800">
+              Partido pendiente de resolución
+            </span>
+          ) : (
+            <span
+              className="rounded-full px-4 py-1.5 text-sm font-semibold text-white"
+              style={{ backgroundColor: legislador.partido.color || '#6b7280' }}
+            >
+              {legislador.partido.sigla}
+            </span>
+          )}
         </div>
       </div>
 

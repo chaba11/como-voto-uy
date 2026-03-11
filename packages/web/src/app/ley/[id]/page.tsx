@@ -22,6 +22,16 @@ export default async function PaginaLey({
       <div className="mb-8 rounded-xl bg-white p-6 shadow-sm">
         <h1 className="text-3xl font-bold text-gray-900">{asunto.nombre}</h1>
         {asunto.descripcion && <p className="mt-2 text-gray-600">{asunto.descripcion}</p>}
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
+            título {asunto.calidadTitulo}
+          </span>
+          {asunto.numeroLey && (
+            <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
+              Ley {asunto.numeroLey}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="space-y-6">
@@ -97,12 +107,18 @@ export default async function PaginaLey({
                             </Link>
                           </td>
                           <td className="px-4 py-3">
-                            <span
-                              className="rounded-full px-2 py-0.5 text-xs font-medium text-white"
-                              style={{ backgroundColor: voto.legislador.partido.color || '#6b7280' }}
-                            >
-                              {voto.legislador.partido.sigla}
-                            </span>
+                            {voto.legislador.partido.sigla === 'SA' ? (
+                              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                Pendiente
+                              </span>
+                            ) : (
+                              <span
+                                className="rounded-full px-2 py-0.5 text-xs font-medium text-white"
+                                style={{ backgroundColor: voto.legislador.partido.color || '#6b7280' }}
+                              >
+                                {voto.legislador.partido.sigla}
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">

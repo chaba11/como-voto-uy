@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { extraerProyecto } from '../../src/parser/extractor-proyecto.js'
 
 describe('extraerProyecto', () => {
@@ -33,19 +33,20 @@ describe('extraerProyecto', () => {
     expect(proyecto.repartido).toBe('859')
   })
 
-  it('extrae nombre de proyecto de ley', () => {
+  it('canoniza el nombre del proyecto de ley', () => {
     const proyecto = extraerProyecto(
       'proyecto de ley por el que se regula el uso de la pirotecnia.'
     )
-    expect(proyecto.nombre).toContain('proyecto de ley')
-    expect(proyecto.nombre).toContain('pirotecnia')
+    expect(proyecto.nombre).toBe('Regula el uso de la pirotecnia')
+    expect(proyecto.tipoAsunto).toBe('proyecto_ley')
   })
 
-  it('extrae nombre de proyecto de minuta de comunicación', () => {
+  it('canoniza el nombre de una minuta de comunicación', () => {
     const proyecto = extraerProyecto(
       'proyecto de minuta de comunicación por el que se solicita al Poder Ejecutivo algo.'
     )
-    expect(proyecto.nombre).toContain('proyecto de minuta de comunicación')
+    expect(proyecto.nombre).toBe('Solicita al Poder Ejecutivo algo')
+    expect(proyecto.tipoAsunto).toBe('minuta_comunicacion')
   })
 
   it('retorna objeto vacío si no hay información', () => {

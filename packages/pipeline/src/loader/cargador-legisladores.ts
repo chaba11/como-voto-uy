@@ -5,9 +5,11 @@ import type { Camara } from '@como-voto-uy/shared'
 
 export interface DatosLegislador {
   nombre: string
+  legislaturaId: number
   partidoId: number
   camara: Camara
   departamento?: string
+  origenPartido?: 'seed' | 'padron' | 'inferido' | 'sin_asignar'
   /** Nombre del titular, para vincular suplentes */
   nombreTitular?: string
 }
@@ -27,6 +29,7 @@ export function cargarLegisladores(db: DB, datos: DatosLegislador[]) {
         .where(
           and(
             eq(legisladores.nombre, titular.nombre),
+            eq(legisladores.legislaturaId, titular.legislaturaId),
             eq(legisladores.camara, titular.camara)
           )
         )
@@ -46,9 +49,11 @@ export function cargarLegisladores(db: DB, datos: DatosLegislador[]) {
           .insert(legisladores)
           .values({
             nombre: titular.nombre,
+            legislaturaId: titular.legislaturaId,
             partidoId: titular.partidoId,
             camara: titular.camara,
             departamento: titular.departamento,
+            origenPartido: titular.origenPartido ?? 'inferido',
           })
           .returning()
           .get()
@@ -67,6 +72,7 @@ export function cargarLegisladores(db: DB, datos: DatosLegislador[]) {
         .where(
           and(
             eq(legisladores.nombre, suplente.nombre),
+            eq(legisladores.legislaturaId, suplente.legislaturaId),
             eq(legisladores.camara, suplente.camara)
           )
         )
@@ -87,10 +93,12 @@ export function cargarLegisladores(db: DB, datos: DatosLegislador[]) {
           .insert(legisladores)
           .values({
             nombre: suplente.nombre,
+            legislaturaId: suplente.legislaturaId,
             partidoId: suplente.partidoId,
             camara: suplente.camara,
             departamento: suplente.departamento,
             titularId,
+            origenPartido: suplente.origenPartido ?? 'inferido',
           })
           .returning()
           .get()

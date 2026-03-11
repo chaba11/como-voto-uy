@@ -13,6 +13,7 @@ import type { DB } from './db/conexion.js'
 import { pushearSchema } from './db/migraciones.js'
 import { cargarSesion } from './loader/cargador-sesion.js'
 import type { DatosSesion, DatosVotacion } from './loader/cargador-sesion.js'
+import { canonizarAsunto } from './parser/canonizador-asuntos.js'
 import { buscarLegislador } from './parser/normalizador-nombres.js'
 import { parsearTaquigrafica } from './parser/index.js'
 import type { VotacionExtraida } from './parser/tipos-parser.js'
@@ -22,6 +23,14 @@ import { seedLegisladores } from './seed/legisladores.js'
 import { seedLegislaturas } from './seed/legislaturas.js'
 import { seedPartidos } from './seed/partidos.js'
 
+type LegisladorCache = {
+  id: number
+  nombre: string
+  camara: Camara
+  legislaturaId: number
+  partidoId: number
+}
+
 function limpiarTextoContexto(texto: string): string {
   let limpio = texto.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim()
 
@@ -30,12 +39,7 @@ function limpiarTextoContexto(texto: string): string {
     limpio = limpio.slice(0, seVota).trim()
   }
 
-  const oraciones = limpio.split(/[.]\s+/).filter((s) => s.trim().length > 10)
-  if (oraciones.length > 0) {
-    limpio = oraciones[oraciones.length - 1].trim()
-  }
-
-  return limpio.replace(/^[\d\s)\-–—]+/, '').trim().slice(0, 240) || 'Votación sin identificar'
+  return limpio.replace(/^[\d\s)\-–—]+/, '').trim()
 }
 
 function cuerpoDesdeCamara(camara: Camara): CuerpoLegislativo {
@@ -80,11 +84,23 @@ function sesionExiste(
 function obtenerLegisladoresCamara(
   db: DB,
   camara: Camara,
-): { id: number; nombre: string }[] {
+  legislaturaId: number,
+): LegisladorCache[] {
   return db
-    .select({ id: legisladores.id, nombre: legisladores.nombre })
+    .select({
+      id: legisladores.id,
+      nombre: legisladores.nombre,
+      camara: legisladores.camara,
+      legislaturaId: legisladores.legislaturaId,
+      partidoId: legisladores.partidoId,
+    })
     .from(legisladores)
-    .where(eq(legisladores.camara, camara))
+    .where(
+      and(
+        eq(legisladores.camara, camara),
+        eq(legisladores.legislaturaId, legislaturaId),
+      ),
+    )
     .all()
 }
 
@@ -97,35 +113,49 @@ function obtenerPartidoSinAsignar(db: DB): number {
 
   if (partido) return partido.id
 
-  const insertado = db
+  return db
     .insert(partidos)
     .values({ nombre: 'Sin asignar', sigla: 'SA', color: '#999999' })
     .returning({ id: partidos.id })
-    .get()
-
-  return insertado.id
+    .get().id
 }
 
 function obtenerOCrearLegislador(
   db: DB,
   nombre: string,
   camara: Camara,
-  cache: { id: number; nombre: string }[],
+  legislaturaId: number,
+  cache: LegisladorCache[],
 ): number {
-  const existenteId = buscarLegislador(nombre, cache)
+  const universo = cache.filter(
+    (legislador) =>
+      legislador.camara === camara && legislador.legislaturaId === legislaturaId,
+  )
+  const existenteId = buscarLegislador(nombre, universo)
   if (existenteId !== null) return existenteId
 
   const insertado = db
     .insert(legisladores)
     .values({
       nombre: nombre.trim(),
+      legislaturaId,
       partidoId: obtenerPartidoSinAsignar(db),
       camara,
+      origenPartido: 'sin_asignar',
     })
-    .returning({ id: legisladores.id, nombre: legisladores.nombre })
+    .returning({
+      id: legisladores.id,
+      nombre: legisladores.nombre,
+      camara: legisladores.camara,
+      legislaturaId: legisladores.legislaturaId,
+      partidoId: legisladores.partidoId,
+    })
     .get()
 
   cache.push(insertado)
+  console.warn(
+    `Legislador sin resolución automática: ${nombre.trim()} (${camara}, legislatura ${legislaturaId})`,
+  )
   return insertado.id
 }
 
@@ -138,13 +168,29 @@ function nivelConfianzaAsunto(votacion: VotacionExtraida): NivelConfianzaVoto {
 export function votacionADatosVotacion(
   db: DB,
   camara: Camara,
+  legislaturaId: number,
   votacion: VotacionExtraida,
-  listaLegisladores: { id: number; nombre: string }[],
+  listaLegisladores: LegisladorCache[],
   ordenSesion: number,
   fuenteUrl: string,
 ): DatosVotacion {
+  const textoContexto = limpiarTextoContexto(votacion.textoContexto)
+  const asuntoCanonico = canonizarAsunto({
+    nombreCrudo: votacion.proyecto?.nombre,
+    textoContexto,
+    carpeta: votacion.proyecto?.carpeta,
+    repartido: votacion.proyecto?.repartido,
+    tipoAsunto: votacion.proyecto?.tipoAsunto,
+  })
+
   const votosIndividuales = (votacion.votos ?? []).map((voto) => ({
-    legisladorId: obtenerOCrearLegislador(db, voto.nombreLegislador, camara, listaLegisladores),
+    legisladorId: obtenerOCrearLegislador(
+      db,
+      voto.nombreLegislador,
+      camara,
+      legislaturaId,
+      listaLegisladores,
+    ),
     voto: voto.voto,
     nivelConfianza: 'confirmado' as const,
     esOficial: true,
@@ -163,19 +209,6 @@ export function votacionADatosVotacion(
       }
     : undefined
 
-  const asunto = {
-    nombre: votacion.proyecto?.nombre || limpiarTextoContexto(votacion.textoContexto),
-    descripcion: votacion.proyecto?.carpeta
-      ? `Carpeta n.º ${votacion.proyecto.carpeta}`
-      : undefined,
-    carpeta: votacion.proyecto?.carpeta,
-    repartido: votacion.proyecto?.repartido,
-    codigoOficial:
-      votacion.proyecto?.carpeta && votacion.proyecto?.repartido
-        ? `${votacion.proyecto.carpeta}-${votacion.proyecto.repartido}`
-        : votacion.proyecto?.carpeta,
-  }
-
   const estadoCobertura = votosIndividuales.length
     ? 'individual_confirmado'
     : resultadoAgregado
@@ -183,7 +216,18 @@ export function votacionADatosVotacion(
       : 'sin_desglose_publico'
 
   return {
-    asunto,
+    asunto: {
+      nombre: asuntoCanonico.nombre,
+      calidadTitulo: asuntoCanonico.calidadTitulo,
+      descripcion: asuntoCanonico.descripcion,
+      carpeta: votacion.proyecto?.carpeta,
+      repartido: votacion.proyecto?.repartido,
+      tipoAsunto: asuntoCanonico.tipoAsunto,
+      codigoOficial:
+        votacion.proyecto?.carpeta && votacion.proyecto?.repartido
+          ? `${votacion.proyecto.carpeta}-${votacion.proyecto.repartido}`
+          : votacion.proyecto?.carpeta,
+    },
     ordenSesion,
     modalidad: votacion.tipo === 'nominal' ? 'nominal' : 'ordinaria',
     estadoCobertura,
@@ -199,7 +243,7 @@ export function votacionADatosVotacion(
     evidencias: [
       {
         tipo: 'texto',
-        texto: limpiarTextoContexto(votacion.textoContexto),
+        texto: textoContexto,
         detalle: votosIndividuales.length
           ? 'Contexto de votación nominal en diario oficial'
           : 'Contexto de resultado agregado en diario oficial',
@@ -248,7 +292,7 @@ export async function ejecutarPipeline(
 
   const legislaturaId = obtenerLegislaturaId(db, opciones.legislatura)
   const cuerpo = cuerpoDesdeCamara(opciones.camara)
-  const listaLegisladores = obtenerLegisladoresCamara(db, opciones.camara)
+  const listaLegisladores = obtenerLegisladoresCamara(db, opciones.camara, legislaturaId)
 
   const entradas = await obtenerListadoSesiones(opciones.camara, opciones.legislatura)
   resultado.sesionesListadas = entradas.length
@@ -269,6 +313,7 @@ export async function ejecutarPipeline(
         votacionADatosVotacion(
           db,
           opciones.camara,
+          legislaturaId,
           votacion,
           listaLegisladores,
           indice + 1,

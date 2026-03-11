@@ -14,29 +14,40 @@ export const partidos = sqliteTable('partidos', {
   color: text('color').notNull(),
 })
 
-export const legisladores = sqliteTable(
-  'legisladores',
-  {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    nombre: text('nombre').notNull(),
-    partidoId: integer('partido_id')
-      .notNull()
-      .references(() => partidos.id),
-    titularId: integer('titular_id'),
-    camara: text('camara', { enum: ['senado', 'representantes'] }).notNull(),
-    departamento: text('departamento'),
-  },
-  (table) => ({
-    porCamara: index('idx_legisladores_camara').on(table.camara),
-  }),
-)
-
 export const legislaturas = sqliteTable('legislaturas', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   numero: integer('numero').notNull().unique(),
   fechaInicio: text('fecha_inicio').notNull(),
   fechaFin: text('fecha_fin'),
 })
+
+export const legisladores = sqliteTable(
+  'legisladores',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    nombre: text('nombre').notNull(),
+    legislaturaId: integer('legislatura_id')
+      .notNull()
+      .references(() => legislaturas.id),
+    partidoId: integer('partido_id')
+      .notNull()
+      .references(() => partidos.id),
+    titularId: integer('titular_id'),
+    camara: text('camara', { enum: ['senado', 'representantes'] }).notNull(),
+    departamento: text('departamento'),
+    origenPartido: text('origen_partido', {
+      enum: ['seed', 'padron', 'inferido', 'sin_asignar'],
+    }).notNull().default('inferido'),
+  },
+  (table) => ({
+    porCamara: index('idx_legisladores_camara').on(table.legislaturaId, table.camara),
+    unicoPorLegislaturaCamaraNombre: uniqueIndex('uidx_legisladores_leg_camara_nombre').on(
+      table.legislaturaId,
+      table.camara,
+      table.nombre,
+    ),
+  }),
+)
 
 export const fuentes = sqliteTable('fuentes', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -86,6 +97,9 @@ export const asuntos = sqliteTable(
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
     nombre: text('nombre').notNull(),
+    calidadTitulo: text('calidad_titulo', {
+      enum: ['canonico', 'razonable', 'incompleto'],
+    }).notNull().default('incompleto'),
     descripcion: text('descripcion'),
     tema: text('tema'),
     codigoOficial: text('codigo_oficial'),
@@ -202,6 +216,10 @@ export const partidosRelations = relations(partidos, ({ many }) => ({
 }))
 
 export const legisladoresRelations = relations(legisladores, ({ one, many }) => ({
+  legislatura: one(legislaturas, {
+    fields: [legisladores.legislaturaId],
+    references: [legislaturas.id],
+  }),
   partido: one(partidos, {
     fields: [legisladores.partidoId],
     references: [partidos.id],
@@ -217,6 +235,7 @@ export const legisladoresRelations = relations(legisladores, ({ one, many }) => 
 
 export const legislaturasRelations = relations(legislaturas, ({ many }) => ({
   sesiones: many(sesiones),
+  legisladores: many(legisladores),
 }))
 
 export const fuentesRelations = relations(fuentes, ({ many }) => ({

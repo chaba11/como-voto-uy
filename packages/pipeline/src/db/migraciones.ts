@@ -21,20 +21,22 @@ CREATE TABLE IF NOT EXISTS partidos (
   color TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS legisladores (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nombre TEXT NOT NULL,
-  partido_id INTEGER NOT NULL REFERENCES partidos(id),
-  titular_id INTEGER,
-  camara TEXT NOT NULL CHECK(camara IN ('senado', 'representantes')),
-  departamento TEXT
-);
-
 CREATE TABLE IF NOT EXISTS legislaturas (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   numero INTEGER NOT NULL UNIQUE,
   fecha_inicio TEXT NOT NULL,
   fecha_fin TEXT
+);
+
+CREATE TABLE IF NOT EXISTS legisladores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL,
+  legislatura_id INTEGER NOT NULL REFERENCES legislaturas(id),
+  partido_id INTEGER NOT NULL REFERENCES partidos(id),
+  titular_id INTEGER,
+  camara TEXT NOT NULL CHECK(camara IN ('senado', 'representantes')),
+  departamento TEXT,
+  origen_partido TEXT NOT NULL DEFAULT 'inferido' CHECK(origen_partido IN ('seed', 'padron', 'inferido', 'sin_asignar'))
 );
 
 CREATE TABLE IF NOT EXISTS fuentes (
@@ -58,6 +60,7 @@ CREATE TABLE IF NOT EXISTS sesiones (
 CREATE TABLE IF NOT EXISTS asuntos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL,
+  calidad_titulo TEXT NOT NULL DEFAULT 'incompleto' CHECK(calidad_titulo IN ('canonico', 'razonable', 'incompleto')),
   descripcion TEXT,
   tema TEXT,
   codigo_oficial TEXT,
@@ -115,7 +118,8 @@ CREATE TABLE IF NOT EXISTS evidencias (
   detalle TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_legisladores_camara ON legisladores(camara);
+CREATE INDEX IF NOT EXISTS idx_legisladores_camara ON legisladores(legislatura_id, camara);
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_legisladores_leg_camara_nombre ON legisladores(legislatura_id, camara, nombre);
 CREATE INDEX IF NOT EXISTS idx_sesiones_cuerpo_fecha ON sesiones(cuerpo, fecha);
 CREATE UNIQUE INDEX IF NOT EXISTS uidx_asuntos_codigo_oficial ON asuntos(codigo_oficial);
 CREATE INDEX IF NOT EXISTS idx_asuntos_carpeta ON asuntos(carpeta);

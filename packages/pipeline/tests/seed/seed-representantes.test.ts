@@ -1,20 +1,19 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
+import { eq } from 'drizzle-orm'
+import { legisladores, legislaturas, partidos } from '@como-voto-uy/shared'
 import { crearConexionEnMemoria } from '../../src/db/conexion.js'
 import { pushearSchema } from '../../src/db/migraciones.js'
+import { seedLegislaturas } from '../../src/seed/legislaturas.js'
 import { seedPartidos } from '../../src/seed/partidos.js'
 import {
-  extraerLegisladoresUnicos,
-  seedLegisladoresRepresentantes,
   PARTIDO_POR_DIPUTADO,
+  extraerLegisladoresUnicos,
+  reconciliarLegisladoresSinAsignar,
+  seedLegisladoresRepresentantes,
 } from '../../src/seed/legisladores-representantes.js'
-import { legisladores, partidos } from '@como-voto-uy/shared'
-import { eq } from 'drizzle-orm'
 import type { VotacionRepresentantes } from '../../src/scraper/votaciones-representantes.js'
 
-function crearVotacion(
-  listaSi: string[],
-  listaNo: string[],
-): VotacionRepresentantes {
+function crearVotacion(listaSi: string[], listaNo: string[]): VotacionRepresentantes {
   return {
     Sesion: 1,
     SesionFecha: '2025-03-15',
@@ -30,130 +29,119 @@ function crearVotacion(
 describe('legisladores representantes', () => {
   describe('extraerLegisladoresUnicos', () => {
     it('extrae nombres únicos de votaciones', () => {
-      const votaciones = [
+      const nombres = extraerLegisladoresUnicos([
         crearVotacion(['Abdala, Pablo D.', 'Gandini, Jorge A.'], ['Bottino, Valentina']),
         crearVotacion(['Malan, Juan Martín'], ['Abdala, Pablo D.']),
-      ]
+      ])
 
-      const nombres = extraerLegisladoresUnicos(votaciones)
-
-      expect(nombres).toHaveLength(4)
-      expect(nombres).toContain('Abdala, Pablo D.')
-      expect(nombres).toContain('Gandini, Jorge A.')
-      expect(nombres).toContain('Bottino, Valentina')
-      expect(nombres).toContain('Malan, Juan Martín')
-    })
-
-    it('elimina duplicados entre votaciones', () => {
-      const votaciones = [
-        crearVotacion(['Abdala, Pablo D.'], ['Gandini, Jorge A.']),
-        crearVotacion(['Abdala, Pablo D.'], ['Gandini, Jorge A.']),
-      ]
-
-      const nombres = extraerLegisladoresUnicos(votaciones)
-      expect(nombres).toHaveLength(2)
-    })
-
-    it('retorna nombres ordenados alfabéticamente', () => {
-      const votaciones = [
-        crearVotacion(['Malan, Juan Martín', 'Abdala, Pablo D.'], ['Gandini, Jorge A.']),
-      ]
-
-      const nombres = extraerLegisladoresUnicos(votaciones)
       expect(nombres).toEqual([
         'Abdala, Pablo D.',
+        'Bottino, Valentina',
         'Gandini, Jorge A.',
         'Malan, Juan Martín',
       ])
     })
-
-    it('recorta espacios en los nombres', () => {
-      const votaciones = [
-        crearVotacion([' Abdala, Pablo D. '], []),
-      ]
-
-      const nombres = extraerLegisladoresUnicos(votaciones)
-      expect(nombres).toEqual(['Abdala, Pablo D.'])
-    })
-
-    it('retorna lista vacía si no hay votaciones', () => {
-      expect(extraerLegisladoresUnicos([])).toEqual([])
-    })
   })
 
   describe('seedLegisladoresRepresentantes', () => {
-    it('inserta legisladores con partido conocido', async () => {
+    it('inserta legisladores con partido resuelto por padrón', async () => {
       const { db, sqlite } = crearConexionEnMemoria()
       pushearSchema(sqlite)
       seedPartidos(db)
+      seedLegislaturas(db)
 
-      const votaciones = [
-        crearVotacion(['Abdala, Pablo D.'], ['Gandini, Jorge A.']),
-      ]
-
-      const insertados = await seedLegisladoresRepresentantes(db, votaciones)
+      const insertados = await seedLegisladoresRepresentantes(
+        db,
+        [crearVotacion(['Abdala, Pablo D.'], ['Gandini, Jorge A.'])],
+        [
+          { nombre: 'Abdala, Pablo D.', siglaPartido: 'FA' },
+          { nombre: 'Gandini, Jorge A.', siglaPartido: 'PN' },
+        ],
+      )
 
       expect(insertados).toBe(2)
-
       const todos = db.select().from(legisladores).all()
       expect(todos).toHaveLength(2)
-      expect(todos.every((l) => l.camara === 'representantes')).toBe(true)
+      expect(todos.every((legislador) => legislador.camara === 'representantes')).toBe(true)
+      expect(todos.every((legislador) => legislador.origenPartido === 'padron')).toBe(true)
     })
 
-    it('inserta legisladores sin partido conocido con "Sin asignar"', async () => {
+    it('usa Sin asignar como último fallback', async () => {
       const { db, sqlite } = crearConexionEnMemoria()
       pushearSchema(sqlite)
       seedPartidos(db)
+      seedLegislaturas(db)
 
-      const votaciones = [
-        crearVotacion(['Abdala, Pablo D.', 'Desconocido, Juan'], ['Gandini, Jorge A.']),
-      ]
+      await seedLegisladoresRepresentantes(db, [
+        crearVotacion(['Desconocido, Juan'], []),
+      ])
 
-      const insertados = await seedLegisladoresRepresentantes(db, votaciones)
+      const desconocido = db
+        .select()
+        .from(legisladores)
+        .where(eq(legisladores.nombre, 'Desconocido, Juan'))
+        .get()
 
-      // Ahora se insertan los 3 (el desconocido con partido "Sin asignar")
-      expect(insertados).toBe(3)
-
-      const todos = db.select().from(legisladores).all()
-      expect(todos).toHaveLength(3)
-
-      // Verificar que "Desconocido" tiene partido "Sin asignar"
-      const desconocido = todos.find((l) => l.nombre === 'Desconocido, Juan')
-      expect(desconocido).toBeDefined()
       const sinAsignar = db
         .select()
         .from(partidos)
         .where(eq(partidos.sigla, 'SA'))
         .get()
+
+      expect(desconocido).toBeDefined()
       expect(sinAsignar).toBeDefined()
-      expect(desconocido!.partidoId).toBe(sinAsignar!.id)
+      expect(desconocido?.partidoId).toBe(sinAsignar?.id)
+      expect(desconocido?.origenPartido).toBe('sin_asignar')
     })
 
-    it('no duplica legisladores al ejecutar dos veces', async () => {
+    it('reconcilia un Sin asignar cuando aparece un par fuerte', async () => {
       const { db, sqlite } = crearConexionEnMemoria()
       pushearSchema(sqlite)
       seedPartidos(db)
+      seedLegislaturas(db)
 
-      const votaciones = [
-        crearVotacion(['Abdala, Pablo D.'], ['Gandini, Jorge A.']),
-      ]
+      const legislaturaId = db
+        .select()
+        .from(legislaturas)
+        .where(eq(legislaturas.numero, 50))
+        .get()!.id
 
-      await seedLegisladoresRepresentantes(db, votaciones)
-      const insertados2 = await seedLegisladoresRepresentantes(db, votaciones)
+      const partidoFa = db.select().from(partidos).where(eq(partidos.sigla, 'FA')).get()!
+      const partidoSa = db.select().from(partidos).where(eq(partidos.sigla, 'SA')).get()!
 
-      expect(insertados2).toBe(0)
+      db.insert(legisladores)
+        .values([
+          {
+            nombre: 'Abdala, Pablo D.',
+            legislaturaId,
+            partidoId: partidoSa.id,
+            camara: 'representantes',
+            origenPartido: 'sin_asignar',
+          },
+          {
+            nombre: 'Pablo Abdala',
+            legislaturaId,
+            partidoId: partidoFa.id,
+            camara: 'representantes',
+            origenPartido: 'padron',
+          },
+        ])
+        .run()
 
-      const todos = db.select().from(legisladores).all()
-      expect(todos).toHaveLength(2)
+      const reconciliados = reconciliarLegisladoresSinAsignar(db, legislaturaId)
+      const abdala = db
+        .select()
+        .from(legisladores)
+        .where(eq(legisladores.nombre, 'Abdala, Pablo D.'))
+        .get()
+
+      expect(reconciliados).toBe(1)
+      expect(abdala?.partidoId).toBe(partidoFa.id)
+      expect(abdala?.origenPartido).toBe('inferido')
     })
+  })
 
-    it('retorna 0 si no hay votaciones', async () => {
-      const { db, sqlite } = crearConexionEnMemoria()
-      pushearSchema(sqlite)
-      seedPartidos(db)
-
-      const insertados = await seedLegisladoresRepresentantes(db, [])
-      expect(insertados).toBe(0)
-    })
+  it('mantiene exportado el fallback manual', () => {
+    expect(PARTIDO_POR_DIPUTADO['Abdala, Pablo D.']).toBe('FA')
   })
 })

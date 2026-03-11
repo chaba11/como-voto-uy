@@ -9,6 +9,7 @@ import {
   votosIndividuales,
 } from '@como-voto-uy/shared'
 import type {
+  CalidadTituloAsunto,
   CuerpoLegislativo,
   EstadoCoberturaVotacion,
   ModalidadVotacion,
@@ -37,6 +38,7 @@ export interface DatosEvidencia {
 
 export interface DatosAsunto {
   nombre: string
+  calidadTitulo?: CalidadTituloAsunto
   descripcion?: string
   tema?: string
   codigoOficial?: string
@@ -100,6 +102,18 @@ function crearClaveAsunto(asunto: DatosAsunto): string | null {
   }
   if (asunto.carpeta?.trim()) return `carpeta:${asunto.carpeta.trim()}`
   return null
+}
+
+function puntajeCalidadTitulo(calidad?: CalidadTituloAsunto): number {
+  switch (calidad) {
+    case 'canonico':
+      return 3
+    case 'razonable':
+      return 2
+    case 'incompleto':
+    default:
+      return 1
+  }
 }
 
 function insertarORecuperarFuente(tx: DB, fuente?: DatosFuente | null): number | null {
@@ -168,12 +182,44 @@ function insertarORecuperarAsunto(tx: DB, asunto?: DatosAsunto | null): number |
       .get()
   }
 
-  if (existente) return existente.id
+  if (existente) {
+    const asuntoActual = tx.select().from(asuntos).where(eq(asuntos.id, existente.id)).get()
+    if (asuntoActual) {
+      const calidadNueva = asunto.calidadTitulo ?? 'incompleto'
+      const calidadActual = asuntoActual.calidadTitulo ?? 'incompleto'
+      const actualizaciones: Partial<typeof asuntos.$inferInsert> = {}
+
+      if (puntajeCalidadTitulo(calidadNueva) > puntajeCalidadTitulo(calidadActual)) {
+        actualizaciones.nombre = asunto.nombre
+        actualizaciones.calidadTitulo = calidadNueva
+      }
+
+      if (!asuntoActual.descripcion && asunto.descripcion) {
+        actualizaciones.descripcion = asunto.descripcion
+      }
+      if (!asuntoActual.tema && asunto.tema) {
+        actualizaciones.tema = asunto.tema
+      }
+      if (!asuntoActual.numeroLey && asunto.numeroLey) {
+        actualizaciones.numeroLey = asunto.numeroLey
+      }
+      if (!asuntoActual.tipoAsunto && asunto.tipoAsunto) {
+        actualizaciones.tipoAsunto = asunto.tipoAsunto
+      }
+
+      if (Object.keys(actualizaciones).length > 0) {
+        tx.update(asuntos).set(actualizaciones).where(eq(asuntos.id, existente.id)).run()
+      }
+    }
+
+    return existente.id
+  }
 
   const insertado = tx
     .insert(asuntos)
     .values({
       nombre: asunto.nombre,
+      calidadTitulo: asunto.calidadTitulo ?? 'incompleto',
       descripcion: asunto.descripcion,
       tema: asunto.tema,
       codigoOficial: asunto.codigoOficial,

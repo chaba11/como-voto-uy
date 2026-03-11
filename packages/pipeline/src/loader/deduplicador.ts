@@ -30,17 +30,18 @@ export function sesionExiste(
 export function legisladorExiste(
   db: DB,
   nombre: string,
-  camara: Camara
+  camara: Camara,
+  legislaturaId?: number,
 ): number | null {
+  const condiciones = [eq(legisladores.nombre, nombre), eq(legisladores.camara, camara)]
+  if (legislaturaId !== undefined) {
+    condiciones.push(eq(legisladores.legislaturaId, legislaturaId))
+  }
+
   const resultado = db
     .select({ id: legisladores.id })
     .from(legisladores)
-    .where(
-      and(
-        eq(legisladores.nombre, nombre),
-        eq(legisladores.camara, camara)
-      )
-    )
+    .where(and(...condiciones))
     .get()
 
   return resultado?.id ?? null

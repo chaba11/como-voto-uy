@@ -21,8 +21,10 @@ export async function obtenerLegislador(id: number) {
     .select({
       id: legisladores.id,
       nombre: legisladores.nombre,
+      legislaturaId: legisladores.legislaturaId,
       camara: legisladores.camara,
       departamento: legisladores.departamento,
+      origenPartido: legisladores.origenPartido,
       titularId: legisladores.titularId,
       partidoId: partidos.id,
       partidoNombre: partidos.nombre,
@@ -50,8 +52,10 @@ export async function obtenerLegislador(id: number) {
   return {
     id: leg.id,
     nombre: leg.nombre,
+    legislaturaId: leg.legislaturaId,
     camara: leg.camara,
     departamento: leg.departamento,
+    origenPartido: leg.origenPartido,
     partido: {
       id: leg.partidoId,
       nombre: leg.partidoNombre,
@@ -118,6 +122,7 @@ export async function obtenerEstadisticasLegislador(legisladorId: number) {
     .where(
       and(
         eq(sesiones.cuerpo, legislador.camara),
+        eq(sesiones.legislaturaId, legislador.legislaturaId),
         inArray(votaciones.nivelConfianza, nivelesRanking),
       ),
     )
@@ -165,8 +170,10 @@ export async function buscarLegisladores(filtros: {
     .select({
       id: legisladores.id,
       nombre: legisladores.nombre,
+      legislaturaId: legisladores.legislaturaId,
       camara: legisladores.camara,
       departamento: legisladores.departamento,
+      origenPartido: legisladores.origenPartido,
       partidoId: partidos.id,
       partidoNombre: partidos.nombre,
       partidoSigla: partidos.sigla,
@@ -182,6 +189,7 @@ export async function buscarLegisladores(filtros: {
 type FilaAsuntoBusqueda = {
   id: number
   nombre: string
+  calidadTitulo: string
   descripcion: string | null
   tema: string | null
   numeroLey: string | null
@@ -220,6 +228,7 @@ export async function buscarLeyes(filtros: {
     .select({
       id: asuntos.id,
       nombre: asuntos.nombre,
+      calidadTitulo: asuntos.calidadTitulo,
       descripcion: asuntos.descripcion,
       tema: asuntos.tema,
       numeroLey: asuntos.numeroLey,
@@ -270,6 +279,7 @@ export async function obtenerAsuntoConVotaciones(id: number) {
   const votacionesBase = await db
     .select({
       id: votaciones.id,
+      asuntoCalidadTitulo: asuntos.calidadTitulo,
       cuerpo: sesiones.cuerpo,
       fecha: sesiones.fecha,
       sesionNumero: sesiones.numero,
@@ -290,6 +300,7 @@ export async function obtenerAsuntoConVotaciones(id: number) {
     })
     .from(votaciones)
     .innerJoin(sesiones, eq(votaciones.sesionId, sesiones.id))
+    .leftJoin(asuntos, eq(votaciones.asuntoId, asuntos.id))
     .leftJoin(resultadosAgregados, eq(resultadosAgregados.votacionId, votaciones.id))
     .leftJoin(fuentes, eq(votaciones.fuentePrincipalId, fuentes.id))
     .where(eq(votaciones.asuntoId, id))
@@ -304,8 +315,10 @@ export async function obtenerAsuntoConVotaciones(id: number) {
       esOficial: votosIndividuales.esOficial,
       legisladorId: legisladores.id,
       legisladorNombre: legisladores.nombre,
+      legisladorLegislaturaId: legisladores.legislaturaId,
       legisladorCamara: legisladores.camara,
       legisladorDepartamento: legisladores.departamento,
+      legisladorOrigenPartido: legisladores.origenPartido,
       partidoId: partidos.id,
       partidoNombre: partidos.nombre,
       partidoSigla: partidos.sigla,
@@ -361,8 +374,10 @@ export async function obtenerAsuntoConVotaciones(id: number) {
           legislador: {
             id: voto.legisladorId,
             nombre: voto.legisladorNombre,
+            legislaturaId: voto.legisladorLegislaturaId,
             camara: voto.legisladorCamara,
             departamento: voto.legisladorDepartamento,
+            origenPartido: voto.legisladorOrigenPartido,
             partido: {
               id: voto.partidoId,
               nombre: voto.partidoNombre,

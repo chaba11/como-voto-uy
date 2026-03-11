@@ -22,6 +22,7 @@ export interface ProyectoExtraido {
   nombre?: string
   carpeta?: string
   repartido?: string
+  tipoAsunto?: string
 }
 
 export interface ResultadoParseo {
