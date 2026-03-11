@@ -2,6 +2,8 @@ import type Database from 'better-sqlite3'
 
 const DROP_SQL = `
 DROP TABLE IF EXISTS evidencias;
+DROP TABLE IF EXISTS resoluciones_afiliacion;
+DROP TABLE IF EXISTS alias_legisladores;
 DROP TABLE IF EXISTS votos_individuales;
 DROP TABLE IF EXISTS resultados_agregados;
 DROP TABLE IF EXISTS votaciones;
@@ -36,7 +38,7 @@ CREATE TABLE IF NOT EXISTS legisladores (
   titular_id INTEGER,
   camara TEXT NOT NULL CHECK(camara IN ('senado', 'representantes')),
   departamento TEXT,
-  origen_partido TEXT NOT NULL DEFAULT 'inferido' CHECK(origen_partido IN ('seed', 'padron', 'inferido', 'sin_asignar'))
+  origen_partido TEXT NOT NULL DEFAULT 'inferido' CHECK(origen_partido IN ('seed', 'dataset', 'padron', 'biografia', 'asistencia', 'inferido', 'sin_asignar'))
 );
 
 CREATE TABLE IF NOT EXISTS fuentes (
@@ -45,6 +47,24 @@ CREATE TABLE IF NOT EXISTS fuentes (
   url TEXT NOT NULL,
   fecha_captura TEXT NOT NULL,
   hash_contenido TEXT
+);
+
+CREATE TABLE IF NOT EXISTS alias_legisladores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  legislador_id INTEGER NOT NULL REFERENCES legisladores(id),
+  alias TEXT NOT NULL,
+  fuente_id INTEGER REFERENCES fuentes(id),
+  nivel_confianza TEXT NOT NULL CHECK(nivel_confianza IN ('confirmado', 'alto', 'medio', 'bajo')),
+  UNIQUE(legislador_id, alias)
+);
+
+CREATE TABLE IF NOT EXISTS resoluciones_afiliacion (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  legislador_id INTEGER NOT NULL REFERENCES legisladores(id),
+  partido_id INTEGER NOT NULL REFERENCES partidos(id),
+  fuente_id INTEGER REFERENCES fuentes(id),
+  metodo TEXT NOT NULL CHECK(metodo IN ('dataset', 'padron_pdf', 'biografia', 'asistencia', 'inferido_por_alias', 'sin_asignar')),
+  nivel_confianza TEXT NOT NULL CHECK(nivel_confianza IN ('confirmado', 'alto', 'medio', 'bajo'))
 );
 
 CREATE TABLE IF NOT EXISTS sesiones (
@@ -120,6 +140,8 @@ CREATE TABLE IF NOT EXISTS evidencias (
 
 CREATE INDEX IF NOT EXISTS idx_legisladores_camara ON legisladores(legislatura_id, camara);
 CREATE UNIQUE INDEX IF NOT EXISTS uidx_legisladores_leg_camara_nombre ON legisladores(legislatura_id, camara, nombre);
+CREATE INDEX IF NOT EXISTS idx_alias_legisladores_legislador ON alias_legisladores(legislador_id);
+CREATE INDEX IF NOT EXISTS idx_resoluciones_afiliacion_legislador ON resoluciones_afiliacion(legislador_id);
 CREATE INDEX IF NOT EXISTS idx_sesiones_cuerpo_fecha ON sesiones(cuerpo, fecha);
 CREATE UNIQUE INDEX IF NOT EXISTS uidx_asuntos_codigo_oficial ON asuntos(codigo_oficial);
 CREATE INDEX IF NOT EXISTS idx_asuntos_carpeta ON asuntos(carpeta);

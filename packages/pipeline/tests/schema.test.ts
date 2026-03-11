@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { getTableName } from 'drizzle-orm'
 import {
+  aliasLegisladores,
   partidos,
   legisladores,
   legislaturas,
@@ -9,6 +10,7 @@ import {
   asuntos,
   votaciones,
   resultadosAgregados,
+  resolucionesAfiliacion,
   votosIndividuales,
   evidencias,
   LEGISLATURAS,
@@ -20,12 +22,14 @@ describe('schema', () => {
   it('exporta todas las tablas', () => {
     expect(partidos).toBeDefined()
     expect(legisladores).toBeDefined()
+    expect(aliasLegisladores).toBeDefined()
     expect(legislaturas).toBeDefined()
     expect(fuentes).toBeDefined()
     expect(sesiones).toBeDefined()
     expect(asuntos).toBeDefined()
     expect(votaciones).toBeDefined()
     expect(resultadosAgregados).toBeDefined()
+    expect(resolucionesAfiliacion).toBeDefined()
     expect(votosIndividuales).toBeDefined()
     expect(evidencias).toBeDefined()
   })
@@ -33,12 +37,14 @@ describe('schema', () => {
   it('tablas tienen nombres correctos', () => {
     expect(getTableName(partidos)).toBe('partidos')
     expect(getTableName(legisladores)).toBe('legisladores')
+    expect(getTableName(aliasLegisladores)).toBe('alias_legisladores')
     expect(getTableName(legislaturas)).toBe('legislaturas')
     expect(getTableName(fuentes)).toBe('fuentes')
     expect(getTableName(sesiones)).toBe('sesiones')
     expect(getTableName(asuntos)).toBe('asuntos')
     expect(getTableName(votaciones)).toBe('votaciones')
     expect(getTableName(resultadosAgregados)).toBe('resultados_agregados')
+    expect(getTableName(resolucionesAfiliacion)).toBe('resoluciones_afiliacion')
     expect(getTableName(votosIndividuales)).toBe('votos_individuales')
     expect(getTableName(evidencias)).toBe('evidencias')
   })

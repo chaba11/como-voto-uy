@@ -36,7 +36,15 @@ export const legisladores = sqliteTable(
     camara: text('camara', { enum: ['senado', 'representantes'] }).notNull(),
     departamento: text('departamento'),
     origenPartido: text('origen_partido', {
-      enum: ['seed', 'padron', 'inferido', 'sin_asignar'],
+      enum: [
+        'seed',
+        'dataset',
+        'padron',
+        'biografia',
+        'asistencia',
+        'inferido',
+        'sin_asignar',
+      ],
     }).notNull().default('inferido'),
   },
   (table) => ({
@@ -66,6 +74,58 @@ export const fuentes = sqliteTable('fuentes', {
   fechaCaptura: text('fecha_captura').notNull(),
   hashContenido: text('hash_contenido'),
 })
+
+export const aliasLegisladores = sqliteTable(
+  'alias_legisladores',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    legisladorId: integer('legislador_id')
+      .notNull()
+      .references(() => legisladores.id),
+    alias: text('alias').notNull(),
+    fuenteId: integer('fuente_id').references(() => fuentes.id),
+    nivelConfianza: text('nivel_confianza', {
+      enum: ['confirmado', 'alto', 'medio', 'bajo'],
+    }).notNull(),
+  },
+  (table) => ({
+    porLegislador: index('idx_alias_legisladores_legislador').on(table.legisladorId),
+    unicoAliasPorLegislador: uniqueIndex('uidx_alias_legisladores_leg_alias').on(
+      table.legisladorId,
+      table.alias,
+    ),
+  }),
+)
+
+export const resolucionesAfiliacion = sqliteTable(
+  'resoluciones_afiliacion',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    legisladorId: integer('legislador_id')
+      .notNull()
+      .references(() => legisladores.id),
+    partidoId: integer('partido_id')
+      .notNull()
+      .references(() => partidos.id),
+    fuenteId: integer('fuente_id').references(() => fuentes.id),
+    metodo: text('metodo', {
+      enum: [
+        'dataset',
+        'padron_pdf',
+        'biografia',
+        'asistencia',
+        'inferido_por_alias',
+        'sin_asignar',
+      ],
+    }).notNull(),
+    nivelConfianza: text('nivel_confianza', {
+      enum: ['confirmado', 'alto', 'medio', 'bajo'],
+    }).notNull(),
+  },
+  (table) => ({
+    porLegislador: index('idx_resoluciones_afiliacion_legislador').on(table.legisladorId),
+  }),
+)
 
 export const sesiones = sqliteTable(
   'sesiones',
@@ -213,6 +273,7 @@ export const evidencias = sqliteTable('evidencias', {
 
 export const partidosRelations = relations(partidos, ({ many }) => ({
   legisladores: many(legisladores),
+  resolucionesAfiliacion: many(resolucionesAfiliacion),
 }))
 
 export const legisladoresRelations = relations(legisladores, ({ one, many }) => ({
@@ -230,6 +291,8 @@ export const legisladoresRelations = relations(legisladores, ({ one, many }) => 
     relationName: 'suplente_titular',
   }),
   suplentes: many(legisladores, { relationName: 'suplente_titular' }),
+  alias: many(aliasLegisladores),
+  resolucionesAfiliacion: many(resolucionesAfiliacion),
   votosIndividuales: many(votosIndividuales),
 }))
 
@@ -242,8 +305,39 @@ export const fuentesRelations = relations(fuentes, ({ many }) => ({
   sesiones: many(sesiones),
   votacionesPrincipales: many(votaciones),
   votosIndividuales: many(votosIndividuales),
+  aliasLegisladores: many(aliasLegisladores),
+  resolucionesAfiliacion: many(resolucionesAfiliacion),
   evidencias: many(evidencias),
 }))
+
+export const aliasLegisladoresRelations = relations(aliasLegisladores, ({ one }) => ({
+  legislador: one(legisladores, {
+    fields: [aliasLegisladores.legisladorId],
+    references: [legisladores.id],
+  }),
+  fuente: one(fuentes, {
+    fields: [aliasLegisladores.fuenteId],
+    references: [fuentes.id],
+  }),
+}))
+
+export const resolucionesAfiliacionRelations = relations(
+  resolucionesAfiliacion,
+  ({ one }) => ({
+    legislador: one(legisladores, {
+      fields: [resolucionesAfiliacion.legisladorId],
+      references: [legisladores.id],
+    }),
+    partido: one(partidos, {
+      fields: [resolucionesAfiliacion.partidoId],
+      references: [partidos.id],
+    }),
+    fuente: one(fuentes, {
+      fields: [resolucionesAfiliacion.fuenteId],
+      references: [fuentes.id],
+    }),
+  }),
+)
 
 export const sesionesRelations = relations(sesiones, ({ one, many }) => ({
   legislatura: one(legislaturas, {

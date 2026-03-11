@@ -1,5 +1,11 @@
 import { and, eq } from 'drizzle-orm'
-import { legisladores, legislaturas, partidos } from '@como-voto-uy/shared'
+import {
+  aliasLegisladores,
+  legisladores,
+  legislaturas,
+  partidos,
+  resolucionesAfiliacion,
+} from '@como-voto-uy/shared'
 import type { DB } from '../db/conexion.js'
 
 interface DatoLegislador {
@@ -85,13 +91,32 @@ export function seedLegisladores(db: DB) {
       .get()
 
     if (!existente) {
-      db.insert(legisladores)
+      const insertado = db
+        .insert(legisladores)
         .values({
           nombre: dato.nombre,
           legislaturaId: legislatura50.id,
           partidoId: partido.id,
           camara: dato.camara,
           origenPartido: 'seed',
+        })
+        .returning({ id: legisladores.id })
+        .get()
+
+      db.insert(aliasLegisladores)
+        .values({
+          legisladorId: insertado.id,
+          alias: dato.nombre,
+          nivelConfianza: 'confirmado',
+        })
+        .run()
+
+      db.insert(resolucionesAfiliacion)
+        .values({
+          legisladorId: insertado.id,
+          partidoId: partido.id,
+          metodo: 'dataset',
+          nivelConfianza: 'confirmado',
         })
         .run()
       insertados++

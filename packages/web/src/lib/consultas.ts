@@ -1,11 +1,13 @@
 import { and, count, desc, eq, inArray, like } from 'drizzle-orm'
 import { db } from './db'
 import {
+  aliasLegisladores,
   asuntos,
   fuentes,
   legisladores,
   partidos,
   resultadosAgregados,
+  resolucionesAfiliacion,
   sesiones,
   votaciones,
   votosIndividuales,
@@ -49,6 +51,28 @@ export async function obtenerLegislador(id: number) {
       )[0] ?? null
     : null
 
+  const alias = await db
+    .select({
+      id: aliasLegisladores.id,
+      legisladorId: aliasLegisladores.legisladorId,
+      alias: aliasLegisladores.alias,
+      nivelConfianza: aliasLegisladores.nivelConfianza,
+      fuenteId: aliasLegisladores.fuenteId,
+    })
+    .from(aliasLegisladores)
+    .where(eq(aliasLegisladores.legisladorId, id))
+
+  const resoluciones = await db
+    .select({
+      id: resolucionesAfiliacion.id,
+      partidoId: resolucionesAfiliacion.partidoId,
+      metodo: resolucionesAfiliacion.metodo,
+      nivelConfianza: resolucionesAfiliacion.nivelConfianza,
+      fuenteId: resolucionesAfiliacion.fuenteId,
+    })
+    .from(resolucionesAfiliacion)
+    .where(eq(resolucionesAfiliacion.legisladorId, id))
+
   return {
     id: leg.id,
     nombre: leg.nombre,
@@ -63,6 +87,8 @@ export async function obtenerLegislador(id: number) {
       color: leg.partidoColor,
     },
     titular,
+    alias,
+    resolucionesAfiliacion: resoluciones,
   }
 }
 

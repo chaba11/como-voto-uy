@@ -1,5 +1,6 @@
 import { crearConexion } from './db/conexion.js'
 import { pushearSchema } from './db/migraciones.js'
+import { cargarAfiliacionesHistoricas } from './loader/cargador-afiliaciones.js'
 import { seedPartidos } from './seed/partidos.js'
 import { seedLegislaturas } from './seed/legislaturas.js'
 import { seedLegisladores } from './seed/legisladores.js'
@@ -135,6 +136,24 @@ async function main() {
       break
     }
 
+    case 'afiliaciones': {
+      const { camara, legislatura } = parsearOpciones()
+      const { db, sqlite } = crearConexion(config.rutaDb)
+      pushearSchema(sqlite)
+      seedPartidos(db)
+      seedLegislaturas(db)
+      seedLegisladores(db)
+      const resultado = await cargarAfiliacionesHistoricas(db, {
+        camara,
+        legislaturas: [legislatura],
+      })
+      console.log(
+        `Afiliaciones completadas: ${resultado.registrosProcesados} registros, ${resultado.legisladoresActualizados} actualizaciones`,
+      )
+      sqlite.close()
+      break
+    }
+
     case 'representantes': {
       const resultado = await ejecutarPipelineRepresentantes(config.rutaDb, { resetearDb: true })
       console.log(
@@ -145,7 +164,7 @@ async function main() {
 
     default:
       console.log(
-        'Uso: cli <seed|scrape|parse|load|all|representantes> [--camara=senado|representantes] [--legislatura=50] [--limite=N]',
+        'Uso: cli <seed|afiliaciones|scrape|parse|load|all|representantes> [--camara=senado|representantes] [--legislatura=50] [--limite=N]',
       )
       process.exit(1)
   }

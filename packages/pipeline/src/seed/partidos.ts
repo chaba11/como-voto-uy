@@ -10,8 +10,94 @@ const PARTIDOS = [
   { nombre: 'Partido Independiente', sigla: 'PI', color: '#FFD700' },
   { nombre: 'Partido Ecologista Radical Intransigente', sigla: 'PERI', color: '#228B22' },
   { nombre: 'Unidad Popular', sigla: 'UP', color: '#CC0000' },
+  { nombre: 'Asamblea Popular', sigla: 'AP', color: '#8B0000' },
+  { nombre: 'Nuevo Espacio', sigla: 'NE', color: '#FF8C00' },
+  { nombre: 'Partido Demócrata Cristiano', sigla: 'PDC', color: '#3CB371' },
+  { nombre: 'Partido Socialista del Uruguay', sigla: 'PS', color: '#C2185B' },
+  { nombre: 'Partido de la Gente', sigla: 'PG', color: '#8B4513' },
+  { nombre: 'Partido General Fructuoso Rivera', sigla: 'PGFR', color: '#B22222' },
+  { nombre: 'Partido Comunista del Uruguay', sigla: 'PCU', color: '#AA0000' },
+  { nombre: 'Unión Cívica del Uruguay', sigla: 'UC', color: '#4B0082' },
+  { nombre: 'Unión Popular', sigla: 'UPP', color: '#A52A2A' },
+  { nombre: 'Identidad Soberana', sigla: 'IS', color: '#556B2F' },
+  { nombre: 'Fidel', sigla: 'FIDEL', color: '#696969' },
+  { nombre: 'Partido Nacional Independiente', sigla: 'PNI', color: '#4169E1' },
+  { nombre: 'Partido Blanco Radical', sigla: 'PBR', color: '#1E90FF' },
+  { nombre: 'Partido Colorado Radical', sigla: 'PCR', color: '#DC143C' },
+  { nombre: 'Partido por la Tradición Colorada', sigla: 'PTC', color: '#CD5C5C' },
+  { nombre: 'Propuesta Batllista', sigla: 'PROBA', color: '#FF6347' },
+  { nombre: 'Unión Socialista Liberal', sigla: 'USL', color: '#7B68EE' },
+  { nombre: 'Partido Constitucional', sigla: 'PConst', color: '#708090' },
   { nombre: 'Sin asignar', sigla: 'SA', color: '#999999' },
 ] as const
+
+const ALIAS_PARTIDOS: Record<string, string> = {
+  frenteamplio: 'FA',
+  fa: 'FA',
+  partidonacional: 'PN',
+  pn: 'PN',
+  partidocolorado: 'PC',
+  pc: 'PC',
+  cabildoabierto: 'CA',
+  ca: 'CA',
+  partidoindependiente: 'PI',
+  pi: 'PI',
+  partidoecologistaradicalintransigente: 'PERI',
+  peri: 'PERI',
+  unidadpopular: 'UP',
+  up: 'UP',
+  asambleapopular: 'AP',
+  ap: 'AP',
+  nuevoespacio: 'NE',
+  ne: 'NE',
+  partidodemocratacristiano: 'PDC',
+  pdc: 'PDC',
+  partidosocialistadeluruguay: 'PS',
+  ps: 'PS',
+  partidelagente: 'PG',
+  partidodelagente: 'PG',
+  pg: 'PG',
+  partidogeneralfructuosorivera: 'PGFR',
+  pgfr: 'PGFR',
+  partidocomunistadeluruguay: 'PCU',
+  pcu: 'PCU',
+  unioncivicadeluruguay: 'UC',
+  uc: 'UC',
+  unionpopular: 'UPP',
+  upp: 'UPP',
+  identidadsoberana: 'IS',
+  is: 'IS',
+  fidel: 'FIDEL',
+  partidonacionalindependiente: 'PNI',
+  pni: 'PNI',
+  partidoblancoradical: 'PBR',
+  pbr: 'PBR',
+  partidocoloradoradical: 'PCR',
+  pcr: 'PCR',
+  partidoporlatradicioncolorada: 'PTC',
+  ptc: 'PTC',
+  propuestabatllista: 'PROBA',
+  proba: 'PROBA',
+  unionsocialistaliberal: 'USL',
+  usl: 'USL',
+  partidoconstitucional: 'PConst',
+  pconst: 'PConst',
+  sinasignar: 'SA',
+  sa: 'SA',
+}
+
+export function normalizarClavePartido(texto: string): string {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+}
+
+export function resolverSiglaPartido(texto: string | null | undefined): string | null {
+  if (!texto) return null
+  return ALIAS_PARTIDOS[normalizarClavePartido(texto)] ?? null
+}
 
 export function seedPartidos(db: DB) {
   for (const partido of PARTIDOS) {

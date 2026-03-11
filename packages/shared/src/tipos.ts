@@ -44,7 +44,43 @@ export type TipoEvidencia = 'texto' | 'timestamp' | 'ocr' | 'nota'
 
 export type CalidadTituloAsunto = 'canonico' | 'razonable' | 'incompleto'
 
-export type OrigenPartidoLegislador = 'seed' | 'padron' | 'inferido' | 'sin_asignar'
+export type OrigenPartidoLegislador =
+  | 'seed'
+  | 'dataset'
+  | 'padron'
+  | 'biografia'
+  | 'asistencia'
+  | 'inferido'
+  | 'sin_asignar'
+
+export type MetodoResolucionAfiliacion =
+  | 'dataset'
+  | 'padron_pdf'
+  | 'biografia'
+  | 'asistencia'
+  | 'inferido_por_alias'
+  | 'sin_asignar'
+
+export type TipoRegistroAfiliacion =
+  | 'titular'
+  | 'suplente'
+  | 'integrante_temporal'
+
+export interface AliasLegislador {
+  id: number
+  legisladorId: number
+  alias: string
+  nivelConfianza: NivelConfianzaVoto
+  fuenteId: number | null
+}
+
+export interface ResolucionAfiliacionResumen {
+  id: number
+  partidoId: number
+  metodo: MetodoResolucionAfiliacion
+  nivelConfianza: NivelConfianzaVoto
+  fuenteId: number | null
+}
 
 export interface LegisladorConPartido {
   id: number
@@ -60,6 +96,8 @@ export interface LegisladorConPartido {
     color: string
   }
   titularId: number | null
+  alias: AliasLegislador[]
+  resolucionesAfiliacion: ResolucionAfiliacionResumen[]
 }
 
 export interface ResumenAsunto {

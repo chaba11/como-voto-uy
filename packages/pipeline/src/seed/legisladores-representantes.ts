@@ -2,6 +2,7 @@ import { and, eq, ne } from 'drizzle-orm'
 import { legisladores, legislaturas, partidos } from '@como-voto-uy/shared'
 import type { DB } from '../db/conexion.js'
 import { buscarLegislador } from '../parser/normalizador-nombres.js'
+import { resolverLegisladorPorContexto } from '../loader/cargador-afiliaciones.js'
 import type { VotacionRepresentantes } from '../scraper/votaciones-representantes.js'
 import type { LegisladorPadronRepresentantes } from '../scraper/votaciones-representantes.js'
 
@@ -93,6 +94,14 @@ export async function seedLegisladoresRepresentantes(
   let sinAsignar = 0
 
   for (const nombre of nombres) {
+    const resuelto = resolverLegisladorPorContexto(
+      db,
+      nombre,
+      legislaturaId,
+      'representantes',
+    )
+    if (resuelto !== null) continue
+
     const existente = db
       .select()
       .from(legisladores)

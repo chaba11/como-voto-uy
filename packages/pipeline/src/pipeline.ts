@@ -12,9 +12,10 @@ import { crearConexion } from './db/conexion.js'
 import type { DB } from './db/conexion.js'
 import { pushearSchema } from './db/migraciones.js'
 import { cargarSesion } from './loader/cargador-sesion.js'
+import { cargarAfiliacionesHistoricas, resolverLegisladorPorContexto } from './loader/cargador-afiliaciones.js'
 import type { DatosSesion, DatosVotacion } from './loader/cargador-sesion.js'
 import { canonizarAsunto } from './parser/canonizador-asuntos.js'
-import { buscarLegislador } from './parser/normalizador-nombres.js'
+import { buscarLegisladorConAlias } from './parser/normalizador-nombres.js'
 import { parsearTaquigrafica } from './parser/index.js'
 import type { VotacionExtraida } from './parser/tipos-parser.js'
 import { descargarDocumento } from './scraper/descargador.js'
@@ -29,6 +30,7 @@ type LegisladorCache = {
   camara: Camara
   legislaturaId: number
   partidoId: number
+  alias: string[]
 }
 
 function limpiarTextoContexto(texto: string): string {
@@ -102,6 +104,7 @@ function obtenerLegisladoresCamara(
       ),
     )
     .all()
+    .map((legislador) => ({ ...legislador, alias: [legislador.nombre] }))
 }
 
 function obtenerPartidoSinAsignar(db: DB): number {
@@ -131,8 +134,33 @@ function obtenerOCrearLegislador(
     (legislador) =>
       legislador.camara === camara && legislador.legislaturaId === legislaturaId,
   )
-  const existenteId = buscarLegislador(nombre, universo)
+  const existenteId = buscarLegisladorConAlias(nombre, universo)
   if (existenteId !== null) return existenteId
+
+  const existentePorAlias = resolverLegisladorPorContexto(
+    db,
+    nombre,
+    legislaturaId,
+    camara,
+  )
+  if (existentePorAlias !== null) {
+    const existente = db
+      .select({
+        id: legisladores.id,
+        nombre: legisladores.nombre,
+        camara: legisladores.camara,
+        legislaturaId: legisladores.legislaturaId,
+        partidoId: legisladores.partidoId,
+      })
+      .from(legisladores)
+      .where(eq(legisladores.id, existentePorAlias))
+      .get()
+
+    if (existente && !cache.some((legislador) => legislador.id === existente.id)) {
+      cache.push({ ...existente, alias: [existente.nombre] })
+    }
+    return existentePorAlias
+  }
 
   const insertado = db
     .insert(legisladores)
@@ -149,6 +177,7 @@ function obtenerOCrearLegislador(
       camara: legisladores.camara,
       legislaturaId: legisladores.legislaturaId,
       partidoId: legisladores.partidoId,
+      alias: [legisladores.nombre],
     })
     .get()
 
@@ -289,6 +318,10 @@ export async function ejecutarPipeline(
   seedPartidos(db)
   seedLegislaturas(db)
   seedLegisladores(db)
+  await cargarAfiliacionesHistoricas(db, {
+    camara: opciones.camara,
+    legislaturas: [opciones.legislatura],
+  })
 
   const legislaturaId = obtenerLegislaturaId(db, opciones.legislatura)
   const cuerpo = cuerpoDesdeCamara(opciones.camara)

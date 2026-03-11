@@ -1,7 +1,7 @@
 const TRATAMIENTOS = /\b(SR|SRA|SRTA|DR|DRA|PROF|ING|ARQ|DON|DOÑA)\b\.?/gi
 
-export function normalizarNombre(nombre: string): string {
-  return nombre
+export function normalizarNombre(nombre: unknown): string {
+  return String(nombre ?? '')
     .toUpperCase()
     .replace(TRATAMIENTOS, ' ')
     .replace(/[.;:()]/g, ' ')
@@ -122,16 +122,28 @@ function puntuarCoincidencia(nombreBuscado: string, nombreLegislador: string): n
   return 0
 }
 
-export function buscarLegislador(
+export function buscarLegisladorConAlias(
   nombre: string,
-  legisladores: { id: number; nombre: string }[],
+  legisladores: { id: number; nombre: string; alias?: string[] | string }[],
 ): number | null {
   let mejorId: number | null = null
   let mejorPuntaje = 0
   let empate = false
 
   for (const legislador of legisladores) {
-    const puntaje = puntuarCoincidencia(nombre, legislador.nombre)
+    const aliasCrudo = Array.isArray(legislador.alias)
+      ? legislador.alias
+      : legislador.alias
+        ? [legislador.alias]
+        : []
+    const alias = aliasCrudo
+      .map((valor) => (typeof valor === 'string' ? valor : String(valor ?? '')))
+      .filter(Boolean)
+    const candidatos = [String(legislador.nombre ?? ''), ...alias]
+    const puntaje = Math.max(
+      ...candidatos.map((candidato) => puntuarCoincidencia(nombre, candidato)),
+    )
+
     if (puntaje > mejorPuntaje) {
       mejorPuntaje = puntaje
       mejorId = legislador.id
@@ -146,4 +158,11 @@ export function buscarLegislador(
   }
 
   return mejorId
+}
+
+export function buscarLegislador(
+  nombre: string,
+  legisladores: { id: number; nombre: string }[],
+): number | null {
+  return buscarLegisladorConAlias(nombre, legisladores)
 }

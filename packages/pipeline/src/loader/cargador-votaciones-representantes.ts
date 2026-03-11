@@ -3,6 +3,11 @@ import { legisladores, legislaturas, sesiones } from '@como-voto-uy/shared'
 import { crearConexion } from '../db/conexion.js'
 import type { DB } from '../db/conexion.js'
 import { pushearSchema } from '../db/migraciones.js'
+import {
+  cargarAfiliacionesHistoricas,
+  reconciliarAfiliacionesPorAlias,
+  resolverLegisladorPorContexto,
+} from './cargador-afiliaciones.js'
 import { cargarSesion } from './cargador-sesion.js'
 import type { DatosSesion, DatosVotacion } from './cargador-sesion.js'
 import { canonizarAsunto } from '../parser/canonizador-asuntos.js'
@@ -12,7 +17,6 @@ import {
 } from '../parser/parser-diario-representantes.js'
 import type { VotacionMatcheada } from '../parser/parser-diario-representantes.js'
 import {
-  reconciliarLegisladoresSinAsignar,
   seedLegisladoresRepresentantes,
 } from '../seed/legisladores-representantes.js'
 import { seedLegislaturas } from '../seed/legislaturas.js'
@@ -20,7 +24,6 @@ import { seedPartidos } from '../seed/partidos.js'
 import {
   descargarDiarioPdf,
   obtenerDiariosSesiones,
-  obtenerPadronRepresentantes,
   obtenerVotacionesRepresentantes,
 } from '../scraper/votaciones-representantes.js'
 import type { VotacionRepresentantes } from '../scraper/votaciones-representantes.js'
@@ -42,19 +45,12 @@ function normalizarFecha(fecha: string): string {
 }
 
 function buscarLegisladorId(db: DB, nombre: string, legislaturaId: number): number | null {
-  const legislador = db
-    .select({ id: legisladores.id })
-    .from(legisladores)
-    .where(
-      and(
-        eq(legisladores.nombre, nombre.trim()),
-        eq(legisladores.legislaturaId, legislaturaId),
-        eq(legisladores.camara, 'representantes'),
-      ),
-    )
-    .get()
-
-  return legislador?.id ?? null
+  return resolverLegisladorPorContexto(
+    db,
+    nombre.trim(),
+    legislaturaId,
+    'representantes',
+  )
 }
 
 export function votacionesAModeloNuevo(
@@ -175,8 +171,11 @@ export async function ejecutarPipelineRepresentantes(
   seedLegislaturas(db)
 
   const votacionesJson = await obtenerVotacionesRepresentantes()
-  const padron = await obtenerPadronRepresentantes().catch(() => [])
-  await seedLegisladoresRepresentantes(db, votacionesJson, padron)
+  await cargarAfiliacionesHistoricas(db, {
+    camara: 'representantes',
+    legislaturas: [50],
+  })
+  await seedLegisladoresRepresentantes(db, votacionesJson)
 
   const diarios = await obtenerDiariosSesiones()
   const legislatura = db
@@ -276,7 +275,10 @@ export async function ejecutarPipelineRepresentantes(
     }
   }
 
-  resultado.legisladoresReconciliados = reconciliarLegisladoresSinAsignar(db, legislatura.id)
+  resultado.legisladoresReconciliados = reconciliarAfiliacionesPorAlias(db, {
+    camara: 'representantes',
+    legislaturas: [50],
+  })
 
   sqlite.close()
   return resultado
