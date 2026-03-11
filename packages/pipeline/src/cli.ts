@@ -1,6 +1,9 @@
 import { crearConexion } from './db/conexion.js'
 import { pushearSchema } from './db/migraciones.js'
-import { cargarAfiliacionesHistoricas } from './loader/cargador-afiliaciones.js'
+import {
+  cargarAfiliacionesHistoricas,
+  obtenerReporteCoberturaAfiliaciones,
+} from './loader/cargador-afiliaciones.js'
 import { seedPartidos } from './seed/partidos.js'
 import { seedLegislaturas } from './seed/legislaturas.js'
 import { seedLegisladores } from './seed/legisladores.js'
@@ -19,21 +22,24 @@ function parsearOpciones(): {
   camara: Camara
   legislatura: number
   limite?: number
+  modo: 'automatico' | 'completo'
 } {
   const camaraArg = process.argv.find((a) => a.startsWith('--camara='))
   const legArg = process.argv.find((a) => a.startsWith('--legislatura='))
   const limiteArg = process.argv.find((a) => a.startsWith('--limite='))
+  const modoArg = process.argv.find((a) => a.startsWith('--modo='))
 
   const camara = (camaraArg?.split('=')[1] || 'senado') as Camara
   const legislatura = parseInt(legArg?.split('=')[1] || '50', 10)
   const limite = limiteArg ? parseInt(limiteArg.split('=')[1], 10) : undefined
+  const modo = (modoArg?.split('=')[1] || 'completo') as 'automatico' | 'completo'
 
   if (camara !== 'senado' && camara !== 'representantes') {
     console.error('La cámara debe ser "senado" o "representantes"')
     process.exit(1)
   }
 
-  return { camara, legislatura, limite }
+  return { camara, legislatura, limite, modo }
 }
 
 async function main() {
@@ -137,7 +143,7 @@ async function main() {
     }
 
     case 'afiliaciones': {
-      const { camara, legislatura } = parsearOpciones()
+      const { camara, legislatura, modo } = parsearOpciones()
       const { db, sqlite } = crearConexion(config.rutaDb)
       pushearSchema(sqlite)
       seedPartidos(db)
@@ -146,10 +152,31 @@ async function main() {
       const resultado = await cargarAfiliacionesHistoricas(db, {
         camara,
         legislaturas: [legislatura],
+        incluirCurado: modo !== 'automatico',
       })
       console.log(
-        `Afiliaciones completadas: ${resultado.registrosProcesados} registros, ${resultado.legisladoresActualizados} actualizaciones`,
+        `Afiliaciones completadas: ${resultado.registrosProcesados} registros, ${resultado.legisladoresActualizados} actualizaciones, ${resultado.reconciliadosInterlegislatura} reconciliaciones`,
       )
+      sqlite.close()
+      break
+    }
+
+    case 'cobertura': {
+      const { camara, legislatura, modo } = parsearOpciones()
+      const { db, sqlite } = crearConexion(config.rutaDb)
+      pushearSchema(sqlite)
+      seedPartidos(db)
+      seedLegislaturas(db)
+      seedLegisladores(db)
+      await cargarAfiliacionesHistoricas(db, {
+        camara,
+        legislaturas: [legislatura],
+        incluirCurado: modo !== 'automatico',
+      })
+      const reportes = obtenerReporteCoberturaAfiliaciones(db).filter(
+        (reporte) => reporte.camara === camara && reporte.legislatura === legislatura,
+      )
+      console.log(JSON.stringify(reportes, null, 2))
       sqlite.close()
       break
     }
@@ -164,7 +191,7 @@ async function main() {
 
     default:
       console.log(
-        'Uso: cli <seed|afiliaciones|scrape|parse|load|all|representantes> [--camara=senado|representantes] [--legislatura=50] [--limite=N]',
+        'Uso: cli <seed|afiliaciones|cobertura|scrape|parse|load|all|representantes> [--camara=senado|representantes] [--legislatura=50] [--limite=N] [--modo=automatico|completo]',
       )
       process.exit(1)
   }

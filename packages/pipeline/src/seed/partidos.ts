@@ -33,25 +33,39 @@ const PARTIDOS = [
 
 const ALIAS_PARTIDOS: Record<string, string> = {
   frenteamplio: 'FA',
+  frente: 'FA',
   fa: 'FA',
+  nacional: 'PN',
   partidonacional: 'PN',
+  blanco: 'PN',
   pn: 'PN',
+  colorado: 'PC',
   partidocolorado: 'PC',
   pc: 'PC',
+  cabildo: 'CA',
   cabildoabierto: 'CA',
   ca: 'CA',
+  independiente: 'PI',
   partidoindependiente: 'PI',
   pi: 'PI',
+  ecologista: 'PERI',
+  radicalintransigente: 'PERI',
   partidoecologistaradicalintransigente: 'PERI',
   peri: 'PERI',
+  popular: 'UP',
   unidadpopular: 'UP',
   up: 'UP',
+  asamblea: 'AP',
   asambleapopular: 'AP',
   ap: 'AP',
+  nuevo: 'NE',
   nuevoespacio: 'NE',
   ne: 'NE',
+  democrata: 'PDC',
+  cristiano: 'PDC',
   partidodemocratacristiano: 'PDC',
   pdc: 'PDC',
+  socialista: 'PS',
   partidosocialistadeluruguay: 'PS',
   ps: 'PS',
   partidelagente: 'PG',
@@ -96,7 +110,40 @@ export function normalizarClavePartido(texto: string): string {
 
 export function resolverSiglaPartido(texto: string | null | undefined): string | null {
   if (!texto) return null
-  return ALIAS_PARTIDOS[normalizarClavePartido(texto)] ?? null
+  const clave = normalizarClavePartido(texto)
+  const directo = ALIAS_PARTIDOS[clave]
+  if (directo) return directo
+
+  if (clave.includes('frenteamplio') || clave.includes('encuentroprogresista')) {
+    return 'FA'
+  }
+  if (
+    clave === 'nacional' ||
+    clave.includes('partidonacional') ||
+    clave.includes('partidoblanco')
+  ) {
+    return 'PN'
+  }
+  if (clave === 'colorado' || clave.includes('partidocolorado')) {
+    return 'PC'
+  }
+  if (clave.includes('cabildoabierto')) {
+    return 'CA'
+  }
+  if (clave.includes('partidoindependiente')) {
+    return 'PI'
+  }
+  if (clave.includes('ecologistaradicalintransigente')) {
+    return 'PERI'
+  }
+  if (clave.includes('partidodelagente')) {
+    return 'PG'
+  }
+  if (clave.includes('identidadsoberana')) {
+    return 'IS'
+  }
+
+  return null
 }
 
 export function seedPartidos(db: DB) {

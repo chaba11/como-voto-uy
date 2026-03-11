@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, ne } from 'drizzle-orm'
 import {
   aliasLegisladores,
   fuentes,
@@ -31,8 +31,11 @@ interface LegisladorConAlias {
 export interface ReporteCoberturaAfiliacion {
   camara: Camara
   legislatura: number
+  total: number
   resueltos: number
   sinAsignar: number
+  porcentajeCobertura: number
+  pendientes: string[]
 }
 
 export interface ResultadoCargaAfiliaciones {
@@ -42,6 +45,7 @@ export interface ResultadoCargaAfiliaciones {
   aliasRegistrados: number
   resolucionesRegistradas: number
   sinAsignar: number
+  reconciliadosInterlegislatura: number
   reportes: ReporteCoberturaAfiliacion[]
 }
 
@@ -347,6 +351,16 @@ function actualizarLegislador(
     .run()
 }
 
+function debeCrearLegisladorDesdeRegistro(registro: RegistroAfiliacionFuente): boolean {
+  const esSenadoHistorico =
+    registro.camara === 'senado' &&
+    registro.legislatura >= 46 &&
+    registro.legislatura <= 49 &&
+    registro.fuente.url.includes('/integracionhistorica/')
+
+  return !esSenadoHistorico
+}
+
 function aplicarRegistroAfiliacion(
   db: DB,
   registro: RegistroAfiliacionFuente,
@@ -380,6 +394,15 @@ function aplicarRegistroAfiliacion(
   let resolucionesRegistradas = 0
 
   if (!legisladorId) {
+    if (!debeCrearLegisladorDesdeRegistro(registro)) {
+      return {
+        creado: false,
+        actualizado: false,
+        aliasRegistrados: 0,
+        resolucionesRegistradas: 0,
+        sinAsignar: false,
+      }
+    }
     legisladorId = crearLegislador(db, registro, legislaturaId, partidoId, origenPartido)
     creado = true
   } else {
@@ -484,10 +507,90 @@ export function reconciliarAfiliacionesPorAlias(db: DB, opciones?: {
   return reconciliados
 }
 
+export function reconciliarAfiliacionesEntreLegislaturas(db: DB, opciones?: {
+  legislaturas?: number[]
+  camara?: Camara
+}): number {
+  const partidoSa = obtenerPartidoSinAsignar(db)
+  const candidatos = db
+    .select({
+      id: legisladores.id,
+      nombre: legisladores.nombre,
+      legislaturaId: legisladores.legislaturaId,
+      camara: legisladores.camara,
+    })
+    .from(legisladores)
+    .where(
+      and(
+        eq(legisladores.partidoId, partidoSa),
+        ...(opciones?.camara ? [eq(legisladores.camara, opciones.camara)] : []),
+      ),
+    )
+    .all()
+
+  const mapaLegislaturas = new Map(
+    db
+      .select({ id: legislaturas.id, numero: legislaturas.numero })
+      .from(legislaturas)
+      .all()
+      .map((legislatura) => [legislatura.id, legislatura.numero]),
+  )
+
+  let reconciliados = 0
+  for (const candidato of candidatos) {
+    const numeroLegislatura = mapaLegislaturas.get(candidato.legislaturaId) ?? -1
+    if (opciones?.legislaturas?.length && !opciones.legislaturas.includes(numeroLegislatura)) {
+      continue
+    }
+
+    const universo = db
+      .select({
+        id: legisladores.id,
+        nombre: legisladores.nombre,
+        legislaturaId: legisladores.legislaturaId,
+        partidoId: legisladores.partidoId,
+        origenPartido: legisladores.origenPartido,
+      })
+      .from(legisladores)
+      .where(
+        and(
+          eq(legisladores.camara, candidato.camara),
+          ne(legisladores.partidoId, partidoSa),
+        ),
+      )
+      .all()
+      .filter((legislador) => legislador.id !== candidato.id)
+      .map((legislador) => ({
+        ...legislador,
+        alias: [legislador.nombre],
+      }))
+
+    const matchId = buscarLegisladorConAlias(candidato.nombre, universo)
+    if (matchId === null) continue
+    const destino = universo.find((legislador) => legislador.id === matchId)
+    if (!destino) continue
+
+    actualizarLegislador(db, candidato.id, destino.partidoId, 'inferido')
+    registrarAlias(db, candidato.id, destino.nombre, 'medio', null)
+    registrarResolucion(
+      db,
+      candidato.id,
+      destino.partidoId,
+      'inferido_por_alias',
+      'medio',
+      null,
+    )
+    reconciliados++
+  }
+
+  return reconciliados
+}
+
 export function obtenerReporteCoberturaAfiliaciones(db: DB): ReporteCoberturaAfiliacion[] {
   const partidoSa = obtenerPartidoSinAsignar(db)
   const filas = db
     .select({
+      nombre: legisladores.nombre,
       camara: legisladores.camara,
       legislatura: legislaturas.numero,
       partidoId: legisladores.partidoId,
@@ -503,14 +606,23 @@ export function obtenerReporteCoberturaAfiliaciones(db: DB): ReporteCoberturaAfi
     const actual = mapa.get(clave) ?? {
       camara: fila.camara,
       legislatura: fila.legislatura,
+      total: 0,
       resueltos: 0,
       sinAsignar: 0,
+      porcentajeCobertura: 0,
+      pendientes: [],
     }
+    actual.total++
     if (fila.partidoId === partidoSa) {
       actual.sinAsignar++
+      if (actual.pendientes.length < 10) {
+        actual.pendientes.push(fila.nombre)
+      }
     } else {
       actual.resueltos++
     }
+    actual.porcentajeCobertura =
+      actual.total > 0 ? Math.round((actual.resueltos / actual.total) * 100) : 0
     mapa.set(clave, actual)
   }
 
@@ -519,7 +631,7 @@ export function obtenerReporteCoberturaAfiliaciones(db: DB): ReporteCoberturaAfi
 
 export async function cargarAfiliacionesHistoricas(
   db: DB,
-  opciones: { camara?: Camara; legislaturas?: number[] } = {},
+  opciones: { camara?: Camara; legislaturas?: number[]; incluirCurado?: boolean } = {},
 ): Promise<ResultadoCargaAfiliaciones> {
   const registros = await obtenerRegistrosAfiliacionPorFuente(opciones)
   const resultado: ResultadoCargaAfiliaciones = {
@@ -529,6 +641,7 @@ export async function cargarAfiliacionesHistoricas(
     aliasRegistrados: 0,
     resolucionesRegistradas: 0,
     sinAsignar: 0,
+    reconciliadosInterlegislatura: 0,
     reportes: [],
   }
 
@@ -543,6 +656,10 @@ export async function cargarAfiliacionesHistoricas(
   }
 
   reconciliarAfiliacionesPorAlias(db, opciones)
+  resultado.reconciliadosInterlegislatura = reconciliarAfiliacionesEntreLegislaturas(
+    db,
+    opciones,
+  )
   resultado.reportes = obtenerReporteCoberturaAfiliaciones(db)
 
   return resultado

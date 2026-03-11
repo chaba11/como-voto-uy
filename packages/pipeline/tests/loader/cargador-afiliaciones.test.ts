@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
-import { aliasLegisladores, legisladores, partidos, resolucionesAfiliacion } from '@como-voto-uy/shared'
+import {
+  aliasLegisladores,
+  legisladores,
+  partidos,
+  resolucionesAfiliacion,
+} from '@como-voto-uy/shared'
 import { crearConexionEnMemoria } from '../../src/db/conexion.js'
 import { pushearSchema } from '../../src/db/migraciones.js'
 import { seedLegislaturas } from '../../src/seed/legislaturas.js'
@@ -16,6 +21,7 @@ const { obtenerRegistrosAfiliacionPorFuente } = await import(
 const {
   cargarAfiliacionesHistoricas,
   obtenerReporteCoberturaAfiliaciones,
+  reconciliarAfiliacionesEntreLegislaturas,
   reconciliarAfiliacionesPorAlias,
   resolverLegisladorPorContexto,
 } = await import('../../src/loader/cargador-afiliaciones.js')
@@ -52,8 +58,16 @@ describe('cargador de afiliaciones', () => {
       legislaturas: [50],
     })
 
-    const legislador = db.select().from(legisladores).where(eq(legisladores.nombre, 'Abdala, Pablo')).get()
-    const partido = db.select().from(partidos).where(eq(partidos.id, legislador!.partidoId)).get()
+    const legislador = db
+      .select()
+      .from(legisladores)
+      .where(eq(legisladores.nombre, 'Abdala, Pablo'))
+      .get()
+    const partido = db
+      .select()
+      .from(partidos)
+      .where(eq(partidos.id, legislador!.partidoId))
+      .get()
 
     expect(resultado.legisladoresCreados).toBe(1)
     expect(legislador?.origenPartido).toBe('dataset')
@@ -81,7 +95,11 @@ describe('cargador de afiliaciones', () => {
 
     await cargarAfiliacionesHistoricas(db, { camara: 'senado', legislaturas: [49] })
 
-    const legislador = db.select().from(legisladores).where(eq(legisladores.nombre, 'Pérez, Ana')).get()
+    const legislador = db
+      .select()
+      .from(legisladores)
+      .where(eq(legisladores.nombre, 'Pérez, Ana'))
+      .get()
     expect(legislador?.origenPartido).toBe('biografia')
   })
 
@@ -124,7 +142,12 @@ describe('cargador de afiliaciones', () => {
       .get()!.id
 
     const senadorId = resolverLegisladorPorContexto(db, 'Juan García', legislatura49Id, 'senado')
-    const diputadoId = resolverLegisladorPorContexto(db, 'Juan García', legislatura49Id, 'representantes')
+    const diputadoId = resolverLegisladorPorContexto(
+      db,
+      'Juan García',
+      legislatura49Id,
+      'representantes',
+    )
 
     expect(senadorId).not.toBeNull()
     expect(diputadoId).not.toBeNull()
@@ -207,17 +230,18 @@ describe('cargador de afiliaciones', () => {
     seedLegislaturas(db)
 
     await cargarAfiliacionesHistoricas(db, { camara: 'senado', legislaturas: [48] })
-    const reconciliados = reconciliarAfiliacionesPorAlias(db, { camara: 'senado', legislaturas: [48] })
+    const reconciliados = reconciliarAfiliacionesPorAlias(db, {
+      camara: 'senado',
+      legislaturas: [48],
+    })
 
     const legisladoresSenado = db.select().from(legisladores).all()
-    const sinAsignar = db
-      .select()
-      .from(partidos)
-      .where(eq(partidos.sigla, 'SA'))
-      .get()!
+    const sinAsignar = db.select().from(partidos).where(eq(partidos.sigla, 'SA')).get()!
 
     expect(reconciliados).toBeGreaterThanOrEqual(0)
-    expect(legisladoresSenado.some((legislador) => legislador.partidoId !== sinAsignar.id)).toBe(true)
+    expect(
+      legisladoresSenado.some((legislador) => legislador.partidoId !== sinAsignar.id),
+    ).toBe(true)
   })
 
   it('devuelve reporte de cobertura por cámara y legislatura', async () => {
@@ -254,10 +278,74 @@ describe('cargador de afiliaciones', () => {
 
     expect(reporte).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ camara: 'representantes', legislatura: 50, resueltos: 1 }),
-        expect.objectContaining({ camara: 'senado', legislatura: 49, sinAsignar: 1 }),
+        expect.objectContaining({
+          camara: 'representantes',
+          legislatura: 50,
+          total: 1,
+          resueltos: 1,
+          porcentajeCobertura: 100,
+        }),
+        expect.objectContaining({
+          camara: 'senado',
+          legislatura: 49,
+          total: 1,
+          sinAsignar: 1,
+          porcentajeCobertura: 0,
+          pendientes: ['Persona, Sin Datos'],
+        }),
       ]),
     )
+  })
+
+  it('reutiliza una resolución fuerte entre legislaturas de la misma cámara', async () => {
+    scraperMock
+      .mockResolvedValueOnce([
+        {
+          nombre: 'Bianchi, Graciela',
+          camara: 'senado',
+          legislatura: 50,
+          siglaPartido: 'PN',
+          tipoRegistro: 'titular',
+          fuente: { tipo: 'dataset', url: 'https://example.com/fuerte.csv' },
+          metodo: 'dataset',
+          nivelConfianza: 'confirmado',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          nombre: 'Graciela Bianchi',
+          camara: 'senado',
+          legislatura: 49,
+          siglaPartido: null,
+          tipoRegistro: 'integrante_temporal',
+          fuente: { tipo: 'json', url: 'https://example.com/asistencia.json' },
+          metodo: 'asistencia',
+          nivelConfianza: 'medio',
+        },
+      ])
+
+    const { db, sqlite } = crearConexionEnMemoria()
+    pushearSchema(sqlite)
+    seedPartidos(db)
+    seedLegislaturas(db)
+
+    await cargarAfiliacionesHistoricas(db, { camara: 'senado', legislaturas: [50] })
+    await cargarAfiliacionesHistoricas(db, { camara: 'senado', legislaturas: [49] })
+    const reconciliados = reconciliarAfiliacionesEntreLegislaturas(db, {
+      camara: 'senado',
+      legislaturas: [49],
+    })
+
+    const legislador = db
+      .select()
+      .from(legisladores)
+      .where(eq(legisladores.nombre, 'Graciela Bianchi'))
+      .get()!
+    const partido = db.select().from(partidos).where(eq(partidos.id, legislador.partidoId)).get()!
+
+    expect(reconciliados).toBeGreaterThanOrEqual(0)
+    expect(partido.sigla).toBe('PN')
+    expect(legislador.origenPartido).toBe('inferido')
   })
 
   it('registra alias y resoluciones de afiliación', async () => {
