@@ -87,7 +87,10 @@ export default async function PaginaBuscar({
                       href={`/ley/${ley.id}`}
                       className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
                     >
-                      <h3 className="font-semibold text-gray-900">{ley.nombre}</h3>
+                      <h3 className="font-semibold text-gray-900">{ley.tituloPublico}</h3>
+                      {(ley.origenTitulo === 'identificador' || ley.calidadTitulo === 'incompleto') && (
+                        <p className="mt-1 text-xs text-amber-700">Título incompleto</p>
+                      )}
                       <div className="mt-2 flex items-center gap-3 text-xs text-gray-500">
                         <span>{ley.fecha}</span>
                         <span className="capitalize">{ley.cuerpo}</span>

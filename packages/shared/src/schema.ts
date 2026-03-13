@@ -157,6 +157,10 @@ export const asuntos = sqliteTable(
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
     nombre: text('nombre').notNull(),
+    tituloPublico: text('titulo_publico').notNull(),
+    origenTitulo: text('origen_titulo', {
+      enum: ['estructurado', 'contexto', 'identificador', 'override_manual'],
+    }).notNull().default('identificador'),
     calidadTitulo: text('calidad_titulo', {
       enum: ['canonico', 'razonable', 'incompleto'],
     }).notNull().default('incompleto'),
@@ -186,6 +190,7 @@ export const votaciones = sqliteTable(
     modalidad: text('modalidad', {
       enum: ['nominal', 'electronica', 'ordinaria', 'secreta', 'desconocida'],
     }).notNull(),
+    detalleTitulo: text('detalle_titulo'),
     estadoCobertura: text('estado_cobertura', {
       enum: [
         'individual_confirmado',

@@ -104,6 +104,8 @@ export function insertarSesionNominal(contexto: ContextoPrueba) {
       {
         asunto: {
           nombre: 'Proyecto de ley de transparencia',
+          tituloPublico: 'Proyecto de ley de transparencia',
+          origenTitulo: 'estructurado',
           calidadTitulo: 'canonico',
           carpeta: '1181',
           repartido: '859',
@@ -140,7 +142,7 @@ export function insertarSesionNominal(contexto: ContextoPrueba) {
         evidencias: [
           {
             tipo: 'texto',
-            texto: 'Votación nominal del asunto carpeta 1181',
+            texto: 'VotaciÃ³n nominal del asunto carpeta 1181',
           },
         ],
       },
@@ -162,6 +164,8 @@ export function insertarSesionAgregada(contexto: ContextoPrueba) {
       {
         asunto: {
           nombre: 'Levantamiento del receso',
+          tituloPublico: 'Levantamiento del receso',
+          origenTitulo: 'contexto',
           calidadTitulo: 'razonable',
           codigoOficial: 'receso-2025',
         },
@@ -222,6 +226,8 @@ export function insertarSesionRepresentantes(contexto: ContextoPrueba) {
       {
         asunto: {
           nombre: 'Proyecto de ley sobre datos abiertos',
+          tituloPublico: 'Proyecto de ley sobre datos abiertos',
+          origenTitulo: 'estructurado',
           calidadTitulo: 'canonico',
         },
         ordenSesion: 1,

@@ -12,9 +12,12 @@ import { crearConexion } from './db/conexion.js'
 import type { DB } from './db/conexion.js'
 import { pushearSchema } from './db/migraciones.js'
 import { cargarSesion } from './loader/cargador-sesion.js'
-import { cargarAfiliacionesHistoricas, resolverLegisladorPorContexto } from './loader/cargador-afiliaciones.js'
+import {
+  cargarAfiliacionesHistoricas,
+  resolverLegisladorPorContexto,
+} from './loader/cargador-afiliaciones.js'
 import type { DatosSesion, DatosVotacion } from './loader/cargador-sesion.js'
-import { canonizarAsunto } from './parser/canonizador-asuntos.js'
+import { canonizarAsunto, esTituloSubordinado } from './parser/canonizador-asuntos.js'
 import { buscarLegisladorConAlias } from './parser/normalizador-nombres.js'
 import { parsearTaquigrafica } from './parser/index.js'
 import type { VotacionExtraida } from './parser/tipos-parser.js'
@@ -41,7 +44,7 @@ function limpiarTextoContexto(texto: string): string {
     limpio = limpio.slice(0, seVota).trim()
   }
 
-  return limpio.replace(/^[\d\s)\-–—]+/, '').trim()
+  return limpio.replace(/^[\d\s)\-â€“â€”]+/, '').trim()
 }
 
 function cuerpoDesdeCamara(camara: Camara): CuerpoLegislativo {
@@ -194,7 +197,68 @@ function nivelConfianzaAsunto(votacion: VotacionExtraida): NivelConfianzaVoto {
   return 'medio'
 }
 
-export function votacionADatosVotacion(
+function limpiarDetalleTecnico(texto: string): string {
+  return texto
+    .replace(/\s+/g, ' ')
+    .replace(/\s*([,.;:])\s*/g, '$1 ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function extraerDetalleTecnicoVotacion(textoContexto: string): string | undefined {
+  const texto = textoContexto.replace(/\s+/g, ' ').trim()
+
+  const patrones: RegExp[] = [
+    /en\s+consideraci[oó]n\s+el\s+art[ií]culo\s+\d+[^\n.]{0,120}/i,
+    /en\s+consideraci[oó]n\s+nuevamente\s+el\s+art[ií]culo\s+\d+[^\n.]{0,120}/i,
+    /en\s+consideraci[oó]n\s+el\s+aditivo\s+\d+[^\n.]{0,120}/i,
+    /en\s+consideraci[oó]n\s+la\s+hoja\s+\d+[^\n.]{0,120}/i,
+    /en\s+consideraci[oó]n\s+el\s+sustitutivo\s+de\s+la\s+hoja\s+\d+[^\n.]{0,120}/i,
+    /en\s+consideraci[oó]n\s+el\s+art[ií]culo\s+sustitutivo\s+del\s+art[ií]culo\s+\d+[^\n.]{0,120}/i,
+    /en\s+consideraci[oó]n\s+el\s+bloque\s+de\s+los\s+art[ií]culos\s+[\d,\sy\-]+/i,
+    /se\s+va\s+a\s+votar\s+el\s+art[ií]culo\s+\d+[^\n.]{0,120}/i,
+    /se\s+va\s+a\s+votar\s+el\s+sustitutivo\s+de\s+la\s+hoja\s+\d+[^\n.]{0,120}/i,
+  ]
+
+  for (const patron of patrones) {
+    const match = patron.exec(texto)
+    if (match?.[0]) return limpiarDetalleTecnico(match[0])
+  }
+
+  return undefined
+}
+
+function esTituloRuidoParlamentario(titulo: string): boolean {
+  const limpio = titulo
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return [
+    /^asunto sin titulo identificable$/,
+    /^u\s*n\s*a\s*n\s*i\s*m\s*i\s*d\s*a\s*d\b/,
+    /^palabra el senor senador\b/,
+    /^uso de la palabra\b/,
+    /^no se hace uso de la palabra\b/,
+    /^proyecto de ley,\s*que se comunica/,
+    /^proyecto de resolucion,\s*que se comunica/,
+    /^\d+[)\.-]\s+levantamiento del receso$/,
+    /^\d+[)\.-]\s+reiteracion de pedidos de informes$/,
+    /^e?ñora presidenta\.-?$/,
+    /^senora presidenta\.-?$/,
+  ].some((patron) => patron.test(limpio))
+}
+
+function esAsuntoPrincipal(asuntoCanonico: ReturnType<typeof canonizarAsunto>): boolean {
+  return (
+    !esTituloSubordinado(asuntoCanonico.tituloPublico) &&
+    !esTituloRuidoParlamentario(asuntoCanonico.tituloPublico)
+  )
+}
+
+function construirDatosVotacion(
   db: DB,
   camara: Camara,
   legislaturaId: number,
@@ -202,16 +266,9 @@ export function votacionADatosVotacion(
   listaLegisladores: LegisladorCache[],
   ordenSesion: number,
   fuenteUrl: string,
+  asuntoCanonico: ReturnType<typeof canonizarAsunto>,
+  textoContexto: string,
 ): DatosVotacion {
-  const textoContexto = limpiarTextoContexto(votacion.textoContexto)
-  const asuntoCanonico = canonizarAsunto({
-    nombreCrudo: votacion.proyecto?.nombre,
-    textoContexto,
-    carpeta: votacion.proyecto?.carpeta,
-    repartido: votacion.proyecto?.repartido,
-    tipoAsunto: votacion.proyecto?.tipoAsunto,
-  })
-
   const votosIndividuales = (votacion.votos ?? []).map((voto) => ({
     legisladorId: obtenerOCrearLegislador(
       db,
@@ -247,6 +304,8 @@ export function votacionADatosVotacion(
   return {
     asunto: {
       nombre: asuntoCanonico.nombre,
+      tituloPublico: asuntoCanonico.tituloPublico,
+      origenTitulo: asuntoCanonico.origenTitulo,
       calidadTitulo: asuntoCanonico.calidadTitulo,
       descripcion: asuntoCanonico.descripcion,
       carpeta: votacion.proyecto?.carpeta,
@@ -259,6 +318,7 @@ export function votacionADatosVotacion(
     },
     ordenSesion,
     modalidad: votacion.tipo === 'nominal' ? 'nominal' : 'ordinaria',
+    detalleTitulo: extraerDetalleTecnicoVotacion(textoContexto),
     estadoCobertura,
     nivelConfianza: votosIndividuales.length ? nivelConfianzaAsunto(votacion) : 'alto',
     esOficial: true,
@@ -279,6 +339,91 @@ export function votacionADatosVotacion(
       },
     ],
   }
+}
+
+export function votacionADatosVotacion(
+  db: DB,
+  camara: Camara,
+  legislaturaId: number,
+  votacion: VotacionExtraida,
+  listaLegisladores: LegisladorCache[],
+  ordenSesion: number,
+  fuenteUrl: string,
+): DatosVotacion {
+  const textoContexto = limpiarTextoContexto(votacion.textoContexto)
+  const asuntoCanonico = canonizarAsunto({
+    nombreCrudo: votacion.proyecto?.nombre,
+    textoContexto,
+    carpeta: votacion.proyecto?.carpeta,
+    repartido: votacion.proyecto?.repartido,
+    cuerpo: camara,
+    ordenSesion,
+    tipoAsunto: votacion.proyecto?.tipoAsunto,
+  })
+
+  return construirDatosVotacion(
+    db,
+    camara,
+    legislaturaId,
+    votacion,
+    listaLegisladores,
+    ordenSesion,
+    fuenteUrl,
+    asuntoCanonico,
+    textoContexto,
+  )
+}
+
+export function votacionesADatosSesion(
+  db: DB,
+  camara: Camara,
+  legislaturaId: number,
+  votaciones: VotacionExtraida[],
+  listaLegisladores: LegisladorCache[],
+  fuenteUrl: string,
+  sesionNumero?: number,
+): DatosVotacion[] {
+  let ultimoAsuntoPrincipal: ReturnType<typeof canonizarAsunto> | null = null
+
+  return votaciones.map((votacion, indice) => {
+    const textoContexto = limpiarTextoContexto(votacion.textoContexto)
+    const asuntoBase = canonizarAsunto({
+      nombreCrudo: votacion.proyecto?.nombre,
+      textoContexto,
+      carpeta: votacion.proyecto?.carpeta,
+      repartido: votacion.proyecto?.repartido,
+      cuerpo: camara,
+      sesionNumero,
+      ordenSesion: indice + 1,
+      tipoAsunto: votacion.proyecto?.tipoAsunto,
+    })
+
+    const asuntoCanonico =
+      ultimoAsuntoPrincipal &&
+      (esTituloSubordinado(asuntoBase.tituloPublico) ||
+        esTituloRuidoParlamentario(asuntoBase.tituloPublico))
+        ? {
+            ...ultimoAsuntoPrincipal,
+            descripcion: asuntoBase.descripcion ?? ultimoAsuntoPrincipal.descripcion,
+          }
+        : asuntoBase
+
+    if (esAsuntoPrincipal(asuntoCanonico)) {
+      ultimoAsuntoPrincipal = asuntoCanonico
+    }
+
+    return construirDatosVotacion(
+      db,
+      camara,
+      legislaturaId,
+      votacion,
+      listaLegisladores,
+      indice + 1,
+      fuenteUrl,
+      asuntoCanonico,
+      textoContexto,
+    )
+  })
 }
 
 export interface OpcionesPipeline {
@@ -342,16 +487,14 @@ export async function ejecutarPipeline(
       const documento = await descargarDocumento(entrada)
       const parseo = parsearTaquigrafica(documento.contenido)
 
-      const votacionesCargables = parseo.votaciones.map((votacion, indice) =>
-        votacionADatosVotacion(
-          db,
-          opciones.camara,
-          legislaturaId,
-          votacion,
-          listaLegisladores,
-          indice + 1,
-          entrada.urlDocumentoPagina,
-        ),
+      const votacionesCargables = votacionesADatosSesion(
+        db,
+        opciones.camara,
+        legislaturaId,
+        parseo.votaciones,
+        listaLegisladores,
+        entrada.urlDocumentoPagina,
+        entrada.sesionNumero,
       )
 
       const datosSesion: DatosSesion = {

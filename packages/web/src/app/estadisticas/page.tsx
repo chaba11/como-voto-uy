@@ -65,7 +65,7 @@ export default async function PaginaEstadisticas() {
                   <tr key={`${ley.asuntoId}-${ley.fecha}`} className="border-b last:border-0">
                     <td className="py-3 pr-4">
                       <Link href={`/ley/${ley.asuntoId}`} className="font-medium text-[#002868] hover:underline">
-                        {ley.nombre}
+                        {ley.tituloPublico}
                       </Link>
                     </td>
                     <td className="py-3 pr-4 text-gray-500">{ley.fecha}</td>

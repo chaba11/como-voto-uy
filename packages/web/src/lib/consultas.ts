@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, like } from 'drizzle-orm'
+import { and, count, desc, eq, inArray, like, or } from 'drizzle-orm'
 import { db } from './db'
 import {
   aliasLegisladores,
@@ -101,7 +101,7 @@ export async function obtenerVotosPorLegislador(legisladorId: number) {
       voto: votosIndividuales.voto,
       nivelConfianza: votosIndividuales.nivelConfianza,
       asuntoId: asuntos.id,
-      asuntoNombre: asuntos.nombre,
+      asuntoNombre: asuntos.tituloPublico,
       fecha: sesiones.fecha,
       cuerpo: sesiones.cuerpo,
       fuenteTipo: fuentes.tipo,
@@ -215,9 +215,13 @@ export async function buscarLegisladores(filtros: {
 type FilaAsuntoBusqueda = {
   id: number
   nombre: string
+  tituloPublico: string
+  origenTitulo: string
   calidadTitulo: string
   descripcion: string | null
   tema: string | null
+  carpeta: string | null
+  repartido: string | null
   numeroLey: string | null
   fecha: string
   cuerpo: string
@@ -247,16 +251,31 @@ export async function buscarLeyes(filtros: {
 
   const condiciones = []
   if (filtros.cuerpo) condiciones.push(eq(sesiones.cuerpo, filtros.cuerpo as never))
-  if (filtros.termino) condiciones.push(like(asuntos.nombre, `%${filtros.termino}%`))
+  if (filtros.termino) {
+    condiciones.push(
+      or(
+        like(asuntos.tituloPublico, `%${filtros.termino}%`),
+        like(asuntos.nombre, `%${filtros.termino}%`),
+        like(asuntos.carpeta, `%${filtros.termino}%`),
+        like(asuntos.repartido, `%${filtros.termino}%`),
+        like(asuntos.numeroLey, `%${filtros.termino}%`),
+        like(asuntos.codigoOficial, `%${filtros.termino}%`),
+      )!,
+    )
+  }
   if (filtros.año) condiciones.push(like(sesiones.fecha, `${filtros.año}%`))
 
   const filas = await db
     .select({
       id: asuntos.id,
       nombre: asuntos.nombre,
+      tituloPublico: asuntos.tituloPublico,
+      origenTitulo: asuntos.origenTitulo,
       calidadTitulo: asuntos.calidadTitulo,
       descripcion: asuntos.descripcion,
       tema: asuntos.tema,
+      carpeta: asuntos.carpeta,
+      repartido: asuntos.repartido,
       numeroLey: asuntos.numeroLey,
       fecha: sesiones.fecha,
       cuerpo: sesiones.cuerpo,
@@ -311,6 +330,7 @@ export async function obtenerAsuntoConVotaciones(id: number) {
       sesionNumero: sesiones.numero,
       ordenSesion: votaciones.ordenSesion,
       modalidad: votaciones.modalidad,
+      detalleTitulo: votaciones.detalleTitulo,
       estadoCobertura: votaciones.estadoCobertura,
       nivelConfianza: votaciones.nivelConfianza,
       esOficial: votaciones.esOficial,
@@ -374,6 +394,7 @@ export async function obtenerAsuntoConVotaciones(id: number) {
       sesionNumero: fila.sesionNumero,
       ordenSesion: fila.ordenSesion,
       modalidad: fila.modalidad,
+      detalleTitulo: fila.detalleTitulo,
       estadoCobertura: fila.estadoCobertura,
       nivelConfianza: fila.nivelConfianza,
       esOficial: !!fila.esOficial,
@@ -453,7 +474,7 @@ export async function obtenerPartidoDetalle(id: number) {
     .select({
       voto: votosIndividuales.voto,
       asuntoId: asuntos.id,
-      asuntoNombre: asuntos.nombre,
+      asuntoNombre: asuntos.tituloPublico,
       fecha: sesiones.fecha,
     })
     .from(votosIndividuales)

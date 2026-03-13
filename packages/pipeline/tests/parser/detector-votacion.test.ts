@@ -6,10 +6,9 @@ import { detectarVotaciones } from '../../src/parser/detector-votacion.js'
 function leerFixture(nombre: string): string {
   const ruta = join(__dirname, '..', 'fixtures', nombre)
   const html = readFileSync(ruta, 'utf-8')
-  // Eliminar tags HTML para obtener texto plano
   return html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&#9;/g, '\t')
@@ -25,10 +24,7 @@ describe('detectarVotaciones', () => {
 
     const nominales = secciones.filter((s) => s.tipo === 'nominal')
     expect(nominales.length).toBeGreaterThanOrEqual(1)
-
-    // Verificar que el texto de la sección nominal contiene votos individuales
-    const seccionNominal = nominales[0]
-    expect(seccionNominal.texto).toContain('Voto por la')
+    expect(nominales[0].texto).toContain('Voto por la')
   })
 
   it('detecta votaciones agregadas en taquigráfica simple', () => {
@@ -37,10 +33,7 @@ describe('detectarVotaciones', () => {
 
     const agregadas = secciones.filter((s) => s.tipo === 'agregada')
     expect(agregadas.length).toBeGreaterThanOrEqual(1)
-
-    // Verificar que contiene el patrón de resultado
-    const seccionAgregada = agregadas[0]
-    expect(seccionAgregada.texto).toMatch(/\d+\s+en\s+\d+/)
+    expect(agregadas[0].texto).toMatch(/\d+\s+en\s+\d+/)
   })
 
   it('detecta múltiples votaciones agregadas en taquigráfica nominal', () => {
@@ -48,18 +41,15 @@ describe('detectarVotaciones', () => {
     const secciones = detectarVotaciones(texto)
 
     const agregadas = secciones.filter((s) => s.tipo === 'agregada')
-    // La taquigráfica nominal tiene muchas votaciones agregadas además de la nominal
     expect(agregadas.length).toBeGreaterThan(5)
   })
 
   it('devuelve arreglo vacío para texto sin votaciones', () => {
-    const secciones = detectarVotaciones('Este es un texto sin votaciones.')
-    expect(secciones).toEqual([])
+    expect(detectarVotaciones('Este es un texto sin votaciones.')).toEqual([])
   })
 
   it('devuelve arreglo vacío para texto vacío', () => {
-    const secciones = detectarVotaciones('')
-    expect(secciones).toEqual([])
+    expect(detectarVotaciones('')).toEqual([])
   })
 
   it('detecta votación agregada con texto hardcoded', () => {
@@ -71,6 +61,21 @@ describe('detectarVotaciones', () => {
     const secciones = detectarVotaciones(texto)
     expect(secciones).toHaveLength(1)
     expect(secciones[0].tipo).toBe('agregada')
+  })
+
+  it('conserva contexto fuerte previo en votaciones agregadas del senado', () => {
+    const texto = `
+      SEÑOR SECRETARIO.- «Mocionamos para que se declare urgente y se considere de inmediato la carpeta n.º 472/2025:
+      proyecto de ley por el que se faculta al Ministerio de Trabajo y Seguridad Social a extender por razones de interés general
+      el subsidio por desempleo de los trabajadores dependientes de la empresa Rondatel S. A.».
+      SEÑORA PRESIDENTA.- Se va a votar.
+      (Se vota).
+      –19 en 19. Afirmativa. UNANIMIDAD.
+    `
+    const secciones = detectarVotaciones(texto)
+    expect(secciones).toHaveLength(1)
+    expect(secciones[0].texto).toContain('proyecto de ley por el que se faculta')
+    expect(secciones[0].texto).toContain('empresa Rondatel S. A.')
   })
 
   it('detecta votación nominal con texto hardcoded', () => {

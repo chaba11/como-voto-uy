@@ -46,7 +46,7 @@ export async function obtenerLeyesDivididas(limite = 10) {
   const filas = await db
     .select({
       asuntoId: asuntos.id,
-      nombre: asuntos.nombre,
+      tituloPublico: asuntos.tituloPublico,
       fecha: sesiones.fecha,
       cuerpo: sesiones.cuerpo,
       afirmativos: resultadosAgregados.afirmativos,

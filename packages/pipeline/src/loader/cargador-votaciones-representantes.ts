@@ -1,5 +1,5 @@
-import { and, eq } from 'drizzle-orm'
-import { legisladores, legislaturas, sesiones } from '@como-voto-uy/shared'
+﻿import { and, eq } from 'drizzle-orm'
+import { legislaturas, sesiones } from '@como-voto-uy/shared'
 import { crearConexion } from '../db/conexion.js'
 import type { DB } from '../db/conexion.js'
 import { pushearSchema } from '../db/migraciones.js'
@@ -10,15 +10,13 @@ import {
 } from './cargador-afiliaciones.js'
 import { cargarSesion } from './cargador-sesion.js'
 import type { DatosSesion, DatosVotacion } from './cargador-sesion.js'
-import { canonizarAsunto } from '../parser/canonizador-asuntos.js'
+import { canonizarAsunto, esTituloSubordinado } from '../parser/canonizador-asuntos.js'
 import {
   extraerVotacionesDiario,
   matchearVotaciones,
 } from '../parser/parser-diario-representantes.js'
 import type { VotacionMatcheada } from '../parser/parser-diario-representantes.js'
-import {
-  seedLegisladoresRepresentantes,
-} from '../seed/legisladores-representantes.js'
+import { seedLegisladoresRepresentantes } from '../seed/legisladores-representantes.js'
 import { seedLegislaturas } from '../seed/legislaturas.js'
 import { seedPartidos } from '../seed/partidos.js'
 import {
@@ -45,12 +43,137 @@ function normalizarFecha(fecha: string): string {
 }
 
 function buscarLegisladorId(db: DB, nombre: string, legislaturaId: number): number | null {
-  return resolverLegisladorPorContexto(
-    db,
-    nombre.trim(),
-    legislaturaId,
-    'representantes',
+  return resolverLegisladorPorContexto(db, nombre.trim(), legislaturaId, 'representantes')
+}
+
+function deduplicarVotosIndividuales(
+  votos: Array<{
+    legisladorId: number
+    voto: 'afirmativo' | 'negativo'
+    nivelConfianza: 'confirmado'
+    esOficial: true
+  }>,
+) {
+  const mapa = new Map<number, (typeof votos)[number]>()
+  for (const voto of votos) {
+    if (!mapa.has(voto.legisladorId)) {
+      mapa.set(voto.legisladorId, voto)
+    }
+  }
+  return [...mapa.values()]
+}
+
+function normalizarSlugTitulo(texto: string): string {
+  return texto
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80)
+}
+
+function tieneTituloPublicoAprovechable(
+  asuntoCanonico: ReturnType<typeof canonizarAsunto>,
+): boolean {
+  const titulo = asuntoCanonico.tituloPublico.trim()
+  return (
+    titulo.length >= 12 &&
+    !/^asunto sin t[íi]tulo identificable$/i.test(titulo) &&
+    !/^votaci[oó]n sin asunto identificado/i.test(titulo) &&
+    !/^proyecto de ley$/i.test(titulo)
   )
+}
+
+function esAsuntoAncla(asuntoCanonico: ReturnType<typeof canonizarAsunto>): boolean {
+  return (
+    asuntoCanonico.calidadTitulo !== 'incompleto' || tieneTituloPublicoAprovechable(asuntoCanonico)
+  )
+}
+
+function construirCodigoAsuntoRepresentantes(
+  votacionMatcheada: VotacionMatcheada,
+  asuntoCanonico: ReturnType<typeof canonizarAsunto>,
+) {
+  if (votacionMatcheada.carpeta && votacionMatcheada.repartido) {
+    return `${votacionMatcheada.carpeta}-${votacionMatcheada.repartido}`
+  }
+  if (votacionMatcheada.carpeta) {
+    return votacionMatcheada.carpeta
+  }
+  if (tieneTituloPublicoAprovechable(asuntoCanonico)) {
+    const slug = normalizarSlugTitulo(asuntoCanonico.tituloPublico)
+    if (slug) {
+      return `rep-l50-${slug}`
+    }
+  }
+  return `rep-l50-s${votacionMatcheada.sesion}-v${votacionMatcheada.votacionNumero}`
+}
+
+function completarAsuntoDebil(
+  asuntoCanonico: ReturnType<typeof canonizarAsunto>,
+  votacionMatcheada: VotacionMatcheada,
+) {
+  if (
+    asuntoCanonico.calidadTitulo !== 'incompleto' ||
+    tieneTituloPublicoAprovechable(asuntoCanonico) ||
+    votacionMatcheada.carpeta ||
+    votacionMatcheada.repartido
+  ) {
+    return asuntoCanonico
+  }
+
+  const identificador = `Votación sin asunto identificado · Sesión ${votacionMatcheada.sesion} · N.º ${votacionMatcheada.votacionNumero}`
+  return {
+    ...asuntoCanonico,
+    nombre: identificador,
+    tituloPublico: identificador,
+  }
+}
+
+function propagarAsuntosCanonicosEntreHuecos(
+  asuntos: Array<{
+    asuntoCanonico: ReturnType<typeof canonizarAsunto>
+    codigoOficial: string
+  }>,
+) {
+  for (let indice = 0; indice < asuntos.length; indice++) {
+    const actual = asuntos[indice]
+    if (esAsuntoAncla(actual.asuntoCanonico)) continue
+
+    let anteriorCanonico: (typeof asuntos)[number] | null = null
+    for (let cursor = indice - 1; cursor >= 0; cursor--) {
+      if (esAsuntoAncla(asuntos[cursor].asuntoCanonico)) {
+        anteriorCanonico = asuntos[cursor]
+        break
+      }
+    }
+
+    let siguienteCanonico: (typeof asuntos)[number] | null = null
+    for (let cursor = indice + 1; cursor < asuntos.length; cursor++) {
+      if (esAsuntoAncla(asuntos[cursor].asuntoCanonico)) {
+        siguienteCanonico = asuntos[cursor]
+        break
+      }
+    }
+
+    if (
+      anteriorCanonico &&
+      siguienteCanonico &&
+      anteriorCanonico.codigoOficial === siguienteCanonico.codigoOficial
+    ) {
+      asuntos[indice] = {
+        asuntoCanonico: {
+          ...anteriorCanonico.asuntoCanonico,
+          descripcion:
+            actual.asuntoCanonico.descripcion ?? anteriorCanonico.asuntoCanonico.descripcion,
+        },
+        codigoOficial: anteriorCanonico.codigoOficial,
+      }
+    }
+  }
+
+  return asuntos
 }
 
 export function votacionesAModeloNuevo(
@@ -59,9 +182,57 @@ export function votacionesAModeloNuevo(
   votacionesMatcheadas: VotacionMatcheada[],
 ): { votaciones: DatosVotacion[]; votosCount: number } {
   let votosCount = 0
+  let ultimoAsuntoPrincipal: ReturnType<typeof canonizarAsunto> | null = null
+  let ultimoCodigoPrincipal: string | null = null
+
+  const asuntosResueltos = propagarAsuntosCanonicosEntreHuecos(
+    votacionesMatcheadas.map((votacionMatcheada) => {
+      const asuntoCanonicoBase = canonizarAsunto({
+        nombreCrudo: votacionMatcheada.nombreProyecto,
+        textoContexto: votacionMatcheada.textoContexto,
+        carpeta: votacionMatcheada.carpeta,
+        repartido: votacionMatcheada.repartido,
+        tipoAsunto: 'proyecto_ley',
+      })
+      const asuntoCanonicoIntermedio = completarAsuntoDebil(
+        asuntoCanonicoBase,
+        votacionMatcheada,
+      )
+      const textoCandidatoCrudo =
+        votacionMatcheada.tituloPublico || votacionMatcheada.nombreProyecto || ''
+      const heredaAsuntoPrincipal =
+        ultimoAsuntoPrincipal &&
+        (esTituloSubordinado(asuntoCanonicoIntermedio.tituloPublico) ||
+          esTituloSubordinado(textoCandidatoCrudo))
+      const asuntoCanonico = heredaAsuntoPrincipal
+        ? {
+            ...ultimoAsuntoPrincipal,
+            descripcion:
+              asuntoCanonicoIntermedio.descripcion ?? ultimoAsuntoPrincipal.descripcion,
+          }
+        : asuntoCanonicoIntermedio
+
+      const codigoOficial =
+        heredaAsuntoPrincipal && ultimoCodigoPrincipal
+          ? ultimoCodigoPrincipal
+          : construirCodigoAsuntoRepresentantes(votacionMatcheada, asuntoCanonico)
+
+      if (esAsuntoAncla(asuntoCanonico) && !esTituloSubordinado(asuntoCanonico.tituloPublico)) {
+        ultimoAsuntoPrincipal = asuntoCanonico
+        ultimoCodigoPrincipal = codigoOficial
+      }
+
+      return {
+        asuntoCanonico,
+        codigoOficial,
+      }
+    }),
+  )
 
   const votaciones = votacionesMatcheadas.map((votacionMatcheada, indice) => {
-    const asuntoCanonico = canonizarAsunto({
+    const asuntoResuelto = asuntosResueltos[indice]
+    const asuntoCanonico = asuntoResuelto.asuntoCanonico
+    const asuntoCanonicoBase = canonizarAsunto({
       nombreCrudo: votacionMatcheada.nombreProyecto,
       textoContexto: votacionMatcheada.textoContexto,
       carpeta: votacionMatcheada.carpeta,
@@ -69,7 +240,7 @@ export function votacionesAModeloNuevo(
       tipoAsunto: 'proyecto_ley',
     })
 
-    const votosIndividuales = [
+    const votosIndividuales = deduplicarVotosIndividuales([
       ...votacionMatcheada.listaSi
         .map((nombre) => buscarLegisladorId(db, nombre, legislaturaId))
         .filter((id): id is number => id !== null)
@@ -88,29 +259,34 @@ export function votacionesAModeloNuevo(
           nivelConfianza: 'confirmado' as const,
           esOficial: true,
         })),
-    ]
+    ])
 
     votosCount += votosIndividuales.length
 
     return {
       asunto: {
         nombre: asuntoCanonico.nombre,
+        tituloPublico: asuntoCanonico.tituloPublico,
+        origenTitulo: asuntoCanonico.origenTitulo,
         calidadTitulo: asuntoCanonico.calidadTitulo,
         descripcion: asuntoCanonico.descripcion,
         carpeta: votacionMatcheada.carpeta,
         repartido: votacionMatcheada.repartido,
         tipoAsunto: asuntoCanonico.tipoAsunto ?? 'proyecto_ley',
-        codigoOficial:
-          votacionMatcheada.carpeta && votacionMatcheada.repartido
-            ? `${votacionMatcheada.carpeta}-${votacionMatcheada.repartido}`
-            : votacionMatcheada.carpeta,
+        codigoOficial: asuntoResuelto.codigoOficial,
       },
       ordenSesion: indice + 1,
       modalidad: 'electronica' as const,
       estadoCobertura: 'individual_confirmado' as const,
-      nivelConfianza: asuntoCanonico.calidadTitulo === 'canonico' ? 'alto' : 'medio',
+      nivelConfianza:
+        asuntoCanonico.calidadTitulo === 'canonico'
+          ? 'alto'
+          : asuntoCanonicoBase.calidadTitulo === 'incompleto'
+            ? 'medio'
+            : 'alto',
       esOficial: true,
-      resultado: votacionMatcheada.siVoto > votacionMatcheada.noVoto ? 'afirmativa' : 'negativa',
+      resultado:
+        votacionMatcheada.siVoto > votacionMatcheada.noVoto ? 'afirmativa' : 'negativa',
       fuentePrincipal: {
         tipo: 'json' as const,
         url: 'https://documentos.diputados.gub.uy/docs/DAvotaciones.json',
@@ -227,7 +403,9 @@ export async function ejecutarPipelineRepresentantes(
             noVoto: parseInt(votacion.NoVoto, 10),
             listaSi: votacion.Lista_Si,
             listaNo: votacion.Lista_No,
-            nombreProyecto: `Asunto de sesión ${votacion.Sesion} votación ${votacion.Votacion}`,
+            nombreProyecto: 'Asunto sin título identificable',
+            tituloPublico: 'Asunto sin título identificable',
+            origenTitulo: 'identificador',
             calidadTitulo: 'incompleto',
           }))
         }
@@ -240,7 +418,9 @@ export async function ejecutarPipelineRepresentantes(
           noVoto: parseInt(votacion.NoVoto, 10),
           listaSi: votacion.Lista_Si,
           listaNo: votacion.Lista_No,
-          nombreProyecto: `Asunto de sesión ${votacion.Sesion} votación ${votacion.Votacion}`,
+          nombreProyecto: 'Asunto sin título identificable',
+          tituloPublico: 'Asunto sin título identificable',
+          origenTitulo: 'identificador',
           calidadTitulo: 'incompleto',
         }))
       }

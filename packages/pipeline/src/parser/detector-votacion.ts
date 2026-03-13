@@ -28,6 +28,47 @@ export function detectarVotaciones(texto: string): SeccionVotacion[] {
   return eliminarSolapamientos(secciones)
 }
 
+function extraerContextoAgregado(texto: string, indiceResultado: number, largoResultado: number): string {
+  const inicioVentana = Math.max(0, indiceResultado - 6000)
+  const finVentana = Math.min(texto.length, indiceResultado + largoResultado + 700)
+  const ventana = texto.slice(inicioVentana, finVentana)
+
+  const marcadoresFuertes = [
+    /carp(?:eta|\.?)\s+n[.º°o ]*\s*\d+/gi,
+    /repartido\s+n[.º°o ]*\s*\d+/gi,
+    /proyecto\s+de\s+(?:ley|minuta\s+de\s+comunicaci[oó]n|resoluci[oó]n|decreto)/gi,
+    /mensaje\s+del\s+poder\s+ejecutivo/gi,
+    /mocionamos?\s+para\s+que\s+se\s+declare\s+urgente/gi,
+    /\d+[)\.-]\s+[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s,;:/()-]{10,200}/g,
+  ]
+  const marcadoresDebiles = [
+    /en\s+consideraci[oó]n\s+(?:el|la|los|las)\s+(?:art[ií]culo|aditivo|bloque)/gi,
+  ]
+
+  let inicioRelativo = 0
+  for (const patron of marcadoresFuertes) {
+    let match: RegExpExecArray | null
+    while ((match = patron.exec(ventana)) !== null) {
+      if (match.index <= indiceResultado - inicioVentana) {
+        inicioRelativo = Math.max(inicioRelativo, match.index)
+      }
+    }
+  }
+
+  if (inicioRelativo === 0) {
+    for (const patron of marcadoresDebiles) {
+      let match: RegExpExecArray | null
+      while ((match = patron.exec(ventana)) !== null) {
+        if (match.index <= indiceResultado - inicioVentana) {
+          inicioRelativo = Math.max(inicioRelativo, match.index)
+        }
+      }
+    }
+  }
+
+  return ventana.slice(inicioRelativo).trim()
+}
+
 function detectarNominales(texto: string, secciones: SeccionVotacion[]): void {
   // Estrategia 1: Buscar indicadores de votación nominal seguidos de votos
   const indicadoresNominal = /(?:votaci[oó]n\s+nominal|nominativamente|nominativo|T[oó]mese\s+la\s+votaci[oó]n\s+nominal)/gi
@@ -140,13 +181,13 @@ function detectarAgregadas(texto: string, secciones: SeccionVotacion[]): void {
 
   let match: RegExpExecArray | null
   while ((match = patronResultado.exec(texto)) !== null) {
-    // Tomar contexto alrededor del resultado
-    const inicioContexto = Math.max(0, match.index - 500)
-    const finContexto = Math.min(texto.length, match.index + match[0].length + 100)
+    const contexto = extraerContextoAgregado(texto, match.index, match[0].length)
+    const inicioContexto = Math.max(0, match.index - 6000)
+    const finContexto = Math.min(texto.length, match.index + match[0].length + 700)
 
     secciones.push({
       tipo: 'agregada',
-      texto: texto.slice(inicioContexto, finContexto),
+      texto: contexto || texto.slice(inicioContexto, finContexto),
       inicio: inicioContexto,
       fin: finContexto,
     })

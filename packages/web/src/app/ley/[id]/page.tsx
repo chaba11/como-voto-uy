@@ -20,15 +20,33 @@ export default async function PaginaLey({
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
       <div className="mb-8 rounded-xl bg-white p-6 shadow-sm">
-        <h1 className="text-3xl font-bold text-gray-900">{asunto.nombre}</h1>
+        <h1 className="text-3xl font-bold text-gray-900">{asunto.tituloPublico}</h1>
+        {asunto.nombre !== asunto.tituloPublico && (
+          <p className="mt-2 text-sm text-gray-500">Título canónico: {asunto.nombre}</p>
+        )}
         {asunto.descripcion && <p className="mt-2 text-gray-600">{asunto.descripcion}</p>}
         <div className="mt-3 flex flex-wrap gap-2 text-xs">
           <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
             título {asunto.calidadTitulo}
           </span>
+          {(asunto.origenTitulo === 'identificador' || asunto.calidadTitulo === 'incompleto') && (
+            <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">
+              título incompleto
+            </span>
+          )}
           {asunto.numeroLey && (
             <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
               Ley {asunto.numeroLey}
+            </span>
+          )}
+          {asunto.carpeta && (
+            <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
+              Carpeta {asunto.carpeta}
+            </span>
+          )}
+          {asunto.repartido && (
+            <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
+              Repartido {asunto.repartido}
             </span>
           )}
         </div>
@@ -54,6 +72,12 @@ export default async function PaginaLey({
                 {votacion.estadoCobertura}
               </span>
             </div>
+
+            {votacion.detalleTitulo && (
+              <p className="mt-3 text-sm text-gray-600">
+                Detalle de la votación: {votacion.detalleTitulo}
+              </p>
+            )}
 
             <div className="mt-4 grid gap-4 sm:grid-cols-4">
               <div className="rounded-lg bg-slate-50 p-3">

@@ -43,6 +43,11 @@ export type TipoFuente =
 export type TipoEvidencia = 'texto' | 'timestamp' | 'ocr' | 'nota'
 
 export type CalidadTituloAsunto = 'canonico' | 'razonable' | 'incompleto'
+export type OrigenTituloAsunto =
+  | 'estructurado'
+  | 'contexto'
+  | 'identificador'
+  | 'override_manual'
 
 export type OrigenPartidoLegislador =
   | 'seed'
@@ -103,10 +108,14 @@ export interface LegisladorConPartido {
 export interface ResumenAsunto {
   id: number
   nombre: string
+  tituloPublico: string
+  origenTitulo: OrigenTituloAsunto
   calidadTitulo: CalidadTituloAsunto
   descripcion: string | null
   tema: string | null
   codigoOficial: string | null
+  carpeta: string | null
+  repartido: string | null
   numeroLey: string | null
 }
 
@@ -141,6 +150,7 @@ export interface VotacionConFuente {
   sesionNumero: number | null
   ordenSesion: number | null
   modalidad: ModalidadVotacion
+  detalleTitulo: string | null
   estadoCobertura: EstadoCoberturaVotacion
   nivelConfianza: NivelConfianzaVoto
   esOficial: boolean

@@ -80,6 +80,8 @@ CREATE TABLE IF NOT EXISTS sesiones (
 CREATE TABLE IF NOT EXISTS asuntos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL,
+  titulo_publico TEXT NOT NULL,
+  origen_titulo TEXT NOT NULL DEFAULT 'identificador' CHECK(origen_titulo IN ('estructurado', 'contexto', 'identificador', 'override_manual')),
   calidad_titulo TEXT NOT NULL DEFAULT 'incompleto' CHECK(calidad_titulo IN ('canonico', 'razonable', 'incompleto')),
   descripcion TEXT,
   tema TEXT,
@@ -96,6 +98,7 @@ CREATE TABLE IF NOT EXISTS votaciones (
   asunto_id INTEGER REFERENCES asuntos(id),
   orden_sesion INTEGER,
   modalidad TEXT NOT NULL CHECK(modalidad IN ('nominal', 'electronica', 'ordinaria', 'secreta', 'desconocida')),
+  detalle_titulo TEXT,
   estado_cobertura TEXT NOT NULL CHECK(estado_cobertura IN ('individual_confirmado', 'individual_inferido', 'agregado', 'sin_desglose_publico', 'secreto')),
   nivel_confianza TEXT NOT NULL CHECK(nivel_confianza IN ('confirmado', 'alto', 'medio', 'bajo')),
   es_oficial INTEGER NOT NULL DEFAULT 1,

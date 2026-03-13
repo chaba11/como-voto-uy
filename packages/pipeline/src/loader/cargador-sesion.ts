@@ -14,6 +14,7 @@ import type {
   EstadoCoberturaVotacion,
   ModalidadVotacion,
   NivelConfianzaVoto,
+  OrigenTituloAsunto,
   ResultadoVotacion,
   TipoEvidencia,
   TipoFuente,
@@ -38,6 +39,8 @@ export interface DatosEvidencia {
 
 export interface DatosAsunto {
   nombre: string
+  tituloPublico: string
+  origenTitulo: OrigenTituloAsunto
   calidadTitulo?: CalidadTituloAsunto
   descripcion?: string
   tema?: string
@@ -71,6 +74,7 @@ export interface DatosVotacion {
   asunto?: DatosAsunto | null
   ordenSesion?: number
   modalidad: ModalidadVotacion
+  detalleTitulo?: string
   estadoCobertura: EstadoCoberturaVotacion
   nivelConfianza: NivelConfianzaVoto
   esOficial?: boolean
@@ -111,6 +115,20 @@ function puntajeCalidadTitulo(calidad?: CalidadTituloAsunto): number {
     case 'razonable':
       return 2
     case 'incompleto':
+    default:
+      return 1
+  }
+}
+
+function puntajeOrigenTitulo(origen?: OrigenTituloAsunto): number {
+  switch (origen) {
+    case 'override_manual':
+      return 4
+    case 'estructurado':
+      return 3
+    case 'contexto':
+      return 2
+    case 'identificador':
     default:
       return 1
   }
@@ -194,6 +212,18 @@ function insertarORecuperarAsunto(tx: DB, asunto?: DatosAsunto | null): number |
         actualizaciones.calidadTitulo = calidadNueva
       }
 
+      if (
+        puntajeOrigenTitulo(asunto.origenTitulo) >
+        puntajeOrigenTitulo(asuntoActual.origenTitulo ?? 'identificador')
+      ) {
+        actualizaciones.tituloPublico = asunto.tituloPublico
+        actualizaciones.origenTitulo = asunto.origenTitulo
+      }
+
+      if (!asuntoActual.tituloPublico && asunto.tituloPublico) {
+        actualizaciones.tituloPublico = asunto.tituloPublico
+      }
+
       if (!asuntoActual.descripcion && asunto.descripcion) {
         actualizaciones.descripcion = asunto.descripcion
       }
@@ -219,6 +249,8 @@ function insertarORecuperarAsunto(tx: DB, asunto?: DatosAsunto | null): number |
     .insert(asuntos)
     .values({
       nombre: asunto.nombre,
+      tituloPublico: asunto.tituloPublico,
+      origenTitulo: asunto.origenTitulo,
       calidadTitulo: asunto.calidadTitulo ?? 'incompleto',
       descripcion: asunto.descripcion,
       tema: asunto.tema,
@@ -262,6 +294,7 @@ export function cargarSesion(db: DB, datos: DatosSesion) {
           asuntoId,
           ordenSesion: votacion.ordenSesion,
           modalidad: votacion.modalidad,
+          detalleTitulo: votacion.detalleTitulo,
           estadoCobertura: votacion.estadoCobertura,
           nivelConfianza: votacion.nivelConfianza,
           esOficial: votacion.esOficial ?? true,

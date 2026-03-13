@@ -1,10 +1,24 @@
-import type { CalidadTituloAsunto } from '@como-voto-uy/shared'
+﻿import type {
+  CalidadTituloAsunto,
+  OrigenTituloAsunto,
+} from '@como-voto-uy/shared'
 import type { VotacionRepresentantes } from '../scraper/votaciones-representantes.js'
 import { convertirNumeroEscrito as convertirNumeroBase } from './extractor-votos.js'
 import { canonizarAsunto } from './canonizador-asuntos.js'
 
 function convertirNumero(texto: string): number | null {
-  const limpio = texto.trim().toLowerCase()
+  const limpio = texto
+    .trim()
+    .toLowerCase()
+    .replace(/\bpresentes?\b/g, '')
+    .replace(/\bmiembros?\b/g, '')
+    .replace(/\bvotos?\b/g, '')
+    .replace(/\bafirmativos?\b/g, '')
+    .replace(/\bnegativos?\b/g, '')
+    .replace(/[()".,:;]+/g, ' ')
+    .replace(/\bnovena\s+y\b/g, 'noventa y')
+    .replace(/\s+/g, ' ')
+    .trim()
   if (limpio === 'un') return 1
   return convertirNumeroBase(limpio)
 }
@@ -26,17 +40,114 @@ export interface VotacionMatcheada {
   listaSi: string[]
   listaNo: string[]
   nombreProyecto: string
+  tituloPublico: string
+  origenTitulo: OrigenTituloAsunto
   calidadTitulo: CalidadTituloAsunto
   carpeta?: string
   repartido?: string
   textoContexto?: string
 }
 
+function extraerContextoRelevante(textoPdf: string, indice: number): string {
+  const inicioVentana = Math.max(0, indice - 12000)
+  const ventana = textoPdf.substring(inicioVentana, indice)
+  const marcadoresEncabezado = [
+    /asunto\s+relativo\s+a:/gi,
+    /\d+\.-\s+[^\n]{10,250}/g,
+  ]
+  const marcadoresIdentificador = [
+    /carp(?:eta|\.)\s+(?:n[\u00b0\u00ba.]?\s*)?\d+/gi,
+    /rep(?:artido|\.)\s+(?:n[\u00b0\u00ba.]?\s*)?\d+/gi,
+  ]
+  const marcadoresFuertes = [
+    /proyecto\s+de\s+ley/gi,
+    /proyecto\s+de\s+resoluci(?:o|\u00f3)n/gi,
+    /proyecto\s+de\s+minuta\s+de\s+comunicaci(?:o|\u00f3)n/gi,
+    /mensaje\s+del\s+poder\s+ejecutivo/gi,
+    /l[ée]ase\s+el\s+proyecto/gi,
+  ]
+  const marcadoresDebiles = [/se\s+pasa\s+a\s+considerar/gi, /corresponde\s+votar/gi]
+
+  let inicioRelativo = 0
+  for (const patron of marcadoresEncabezado) {
+    let match: RegExpExecArray | null
+    while ((match = patron.exec(ventana)) !== null) {
+      inicioRelativo = Math.max(inicioRelativo, match.index)
+    }
+  }
+
+  if (inicioRelativo === 0) {
+    for (const patron of marcadoresIdentificador) {
+      let match: RegExpExecArray | null
+      while ((match = patron.exec(ventana)) !== null) {
+        inicioRelativo = Math.max(inicioRelativo, match.index)
+      }
+    }
+  }
+
+  if (inicioRelativo === 0) {
+    for (const patron of marcadoresFuertes) {
+      let match: RegExpExecArray | null
+      while ((match = patron.exec(ventana)) !== null) {
+        inicioRelativo = Math.max(inicioRelativo, match.index)
+      }
+    }
+  }
+
+  if (inicioRelativo === 0) {
+    for (const patron of marcadoresDebiles) {
+      let match: RegExpExecArray | null
+      while ((match = patron.exec(ventana)) !== null) {
+        inicioRelativo = Math.max(inicioRelativo, match.index)
+      }
+    }
+  }
+
+  const contexto = ventana.substring(inicioRelativo).trim()
+  if (contexto.length > 0) return contexto
+  return ventana.slice(-900).trim()
+}
+
+function puntuarInformacionAsunto(
+  info: {
+    tituloPublico: string
+    origenTitulo: OrigenTituloAsunto
+    calidadTitulo: CalidadTituloAsunto
+    carpeta?: string
+    repartido?: string
+  },
+  textoContexto: string,
+  indice: number,
+): number {
+  const baseCalidad = {
+    canonico: 300,
+    razonable: 200,
+    incompleto: 100,
+  }[info.calidadTitulo]
+
+  const baseOrigen = {
+    override_manual: 40,
+    estructurado: 30,
+    contexto: 20,
+    identificador: 10,
+  }[info.origenTitulo]
+
+  const bonusContexto =
+    (/asunto\s+relativo\s+a:/i.test(textoContexto) ? 80 : 0) +
+    (/\d+\.-\s+/i.test(textoContexto) ? 50 : 0) +
+    (/proyecto\s+de\s+ley/i.test(textoContexto) ? 20 : 0) +
+    (/carp(?:eta|\.)/i.test(textoContexto) ? 15 : 0) +
+    (/rep(?:artido|\.)/i.test(textoContexto) ? 15 : 0) +
+    (/gracias,\s+señor[ae]?\s+president/i.test(textoContexto) ? -80 : 0)
+
+  return baseCalidad + baseOrigen + bonusContexto - indice
+}
+
 export function extraerVotacionesDiario(textoPdf: string): VotacionDiario[] {
   const votacionesConPos: Array<VotacionDiario & { posicion: number }> = []
 
   const patronAfirmativosNegativos =
-    /——([^—]+?)\s+votos?\s+afirmativos?\s+y\s+([^—]+?)\s+votos?\s+negativos?\s+en\s+([^—]+?):\s*(AFIRMATIVA|NEGATIVA)/gi
+    /(?:\u2014\u2014|Ã¢â‚¬â€Ã¢â‚¬â€)([^\u2014]+?)\s+votos?\s+afirmativos?\s+y\s+([^\u2014]+?)\s+votos?\s+negativos?\s+en\s+([^\u2014]+?):\s*(AFIRMATIVA|NEGATIVA)/gi
 
   let match: RegExpExecArray | null
   while ((match = patronAfirmativosNegativos.exec(textoPdf)) !== null) {
@@ -46,20 +157,19 @@ export function extraerVotacionesDiario(textoPdf: string): VotacionDiario[] {
     const resultado = match[4].toLowerCase() as 'afirmativa' | 'negativa'
 
     if (afirmativos !== null && negativos !== null && total !== null) {
-      const inicio = Math.max(0, match.index - 500)
       votacionesConPos.push({
         afirmativos,
         negativos,
         total,
         resultado,
-        textoContexto: textoPdf.substring(inicio, match.index),
+        textoContexto: extraerContextoRelevante(textoPdf, match.index),
         posicion: match.index,
       })
     }
   }
 
   const patronEnTotal =
-    /——([A-Za-záéíóúñüÁÉÍÓÚÑÜ\s]+?)\s+en\s+([A-Za-záéíóúñüÁÉÍÓÚÑÜ\s]+?):\s*(AFIRMATIVA|NEGATIVA)/gi
+    /(?:\u2014\u2014|Ã¢â‚¬â€Ã¢â‚¬â€)([\p{L}\s]+?)\s+en\s+([\p{L}\s]+?):\s*(AFIRMATIVA|NEGATIVA)/giu
 
   while ((match = patronEnTotal.exec(textoPdf)) !== null) {
     if (/votos?\s+afirmativos?/i.test(match[0])) continue
@@ -69,31 +179,29 @@ export function extraerVotacionesDiario(textoPdf: string): VotacionDiario[] {
     const resultado = match[3].toLowerCase() as 'afirmativa' | 'negativa'
 
     if (afirmativos !== null && total !== null) {
-      const inicio = Math.max(0, match.index - 500)
       votacionesConPos.push({
         afirmativos,
         negativos: total - afirmativos,
         total,
         resultado,
-        textoContexto: textoPdf.substring(inicio, match.index),
+        textoContexto: extraerContextoRelevante(textoPdf, match.index),
         posicion: match.index,
       })
     }
   }
 
   const patronPorAfirmativa =
-    /——([A-Za-záéíóúñüÁÉÍÓÚÑÜ\s]+?)\s+por la afirmativa:\s*(AFIRMATIVA)/gi
+    /(?:\u2014\u2014|Ã¢â‚¬â€Ã¢â‚¬â€)([\p{L}\s]+?)\s+por la afirmativa:\s*(AFIRMATIVA)/giu
 
   while ((match = patronPorAfirmativa.exec(textoPdf)) !== null) {
     const afirmativos = convertirNumero(match[1].trim())
     if (afirmativos !== null) {
-      const inicio = Math.max(0, match.index - 500)
       votacionesConPos.push({
         afirmativos,
         negativos: 0,
         total: afirmativos,
         resultado: 'afirmativa',
-        textoContexto: textoPdf.substring(inicio, match.index),
+        textoContexto: extraerContextoRelevante(textoPdf, match.index),
         posicion: match.index,
       })
     }
@@ -123,17 +231,31 @@ export function matchearVotaciones(
       }
     }
 
-    const indiceDiario = candidatos.length > 0 ? candidatos[0] : null
+    const indiceDiario =
+      candidatos.length > 0
+        ? candidatos
+            .map((indice) => ({
+              indice,
+              informacionAsunto: extraerNombreProyecto(votacionesDiario[indice].textoContexto),
+              textoContexto: votacionesDiario[indice].textoContexto,
+            }))
+            .map((candidato) => ({
+              ...candidato,
+              puntaje: puntuarInformacionAsunto(
+                candidato.informacionAsunto,
+                candidato.textoContexto,
+                candidato.indice,
+              ),
+            }))
+            .sort((a, b) => b.puntaje - a.puntaje)[0]?.indice ?? null
+        : null
+
     if (indiceDiario !== null) diarioUsado.add(indiceDiario)
 
-    const informacionAsunto = indiceDiario !== null
-      ? extraerNombreProyecto(votacionesDiario[indiceDiario].textoContexto)
-      : {
-          nombre: `Asunto de sesión ${votacionJson.Sesion} votación ${votacionJson.Votacion}`,
-          calidadTitulo: 'incompleto' as const,
-          carpeta: undefined,
-          repartido: undefined,
-        }
+    const informacionAsunto =
+      indiceDiario !== null
+        ? extraerNombreProyecto(votacionesDiario[indiceDiario].textoContexto)
+        : extraerNombreProyecto('')
 
     resultado.push({
       sesion: votacionJson.Sesion,
@@ -144,6 +266,8 @@ export function matchearVotaciones(
       listaSi: votacionJson.Lista_Si,
       listaNo: votacionJson.Lista_No,
       nombreProyecto: informacionAsunto.nombre,
+      tituloPublico: informacionAsunto.tituloPublico,
+      origenTitulo: informacionAsunto.origenTitulo,
       calidadTitulo: informacionAsunto.calidadTitulo,
       carpeta: informacionAsunto.carpeta,
       repartido: informacionAsunto.repartido,
@@ -157,12 +281,16 @@ export function matchearVotaciones(
 
 export function extraerNombreProyecto(textoContexto: string): {
   nombre: string
+  tituloPublico: string
+  origenTitulo: OrigenTituloAsunto
   calidadTitulo: CalidadTituloAsunto
   carpeta?: string
   repartido?: string
 } {
-  const carpeta = /(?:Carpeta|Carp\.)\s+(?:N[°º.]?\s*)?(\d+)(?:\/\d+)?/i.exec(textoContexto)?.[1]
-  const repartido = /(?:Repartido|Rep\.)\s+(?:N[°º.]?\s*)?(\d+)(?:\/\d+)?/i.exec(textoContexto)?.[1]
+  const carpeta =
+    /(?:Carpeta|Carp\.)\s+(?:N[\u00b0\u00ba.]?\s*)?(\d+)(?:\/\d+)?/i.exec(textoContexto)?.[1]
+  const repartido =
+    /(?:Repartido|Rep\.)\s+(?:N[\u00b0\u00ba.]?\s*)?(\d+)(?:\/\d+)?/i.exec(textoContexto)?.[1]
 
   const canonico = canonizarAsunto({
     textoContexto,
@@ -172,6 +300,8 @@ export function extraerNombreProyecto(textoContexto: string): {
 
   return {
     nombre: canonico.nombre,
+    tituloPublico: canonico.tituloPublico,
+    origenTitulo: canonico.origenTitulo,
     calidadTitulo: canonico.calidadTitulo,
     carpeta,
     repartido,

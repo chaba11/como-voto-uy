@@ -20,6 +20,49 @@ function quitarIniciales(tokens: string[]): string[] {
   return tokens.filter((token) => token.length > 1)
 }
 
+function tokenizarClave(clave: string): string[] {
+  return clave.split(' ').filter(Boolean)
+}
+
+function puntajePorSolapamiento(claveBuscada: string, claveCandidata: string): number {
+  const tokensBuscados = tokenizarClave(claveBuscada)
+  const tokensCandidatos = tokenizarClave(claveCandidata)
+
+  if (tokensBuscados.length === 0 || tokensCandidatos.length === 0) {
+    return 0
+  }
+
+  const interseccion = tokensBuscados.filter((token) => tokensCandidatos.includes(token))
+  if (interseccion.length === 0) return 0
+
+  const ratioBuscado = interseccion.length / tokensBuscados.length
+  const ratioCandidato = interseccion.length / tokensCandidatos.length
+  const ratioMinimo = Math.min(ratioBuscado, ratioCandidato)
+
+  if (
+    interseccion.length >= 2 &&
+    ratioBuscado >= 0.75 &&
+    ratioCandidato >= 0.6 &&
+    ratioMinimo >= 0.6
+  ) {
+    return 90
+  }
+
+  if (interseccion.length >= 2 && ratioBuscado === 1 && ratioCandidato === 1) {
+    return 95
+  }
+
+  if (
+    interseccion.length === 1 &&
+    tokensBuscados.length === 1 &&
+    tokensCandidatos.length === 1
+  ) {
+    return 70
+  }
+
+  return 0
+}
+
 function descomponerNombre(nombre: string): { tokens: string[]; invertido: string[] } {
   const nombreNormalizado = sinAcentos(normalizarNombre(nombre))
   const partesCrudas = nombreNormalizado
@@ -77,43 +120,40 @@ export function crearClavesNombre(nombre: string): string[] {
 
 function puntuarCoincidencia(nombreBuscado: string, nombreLegislador: string): number {
   const clavesBuscadas = crearClavesNombre(nombreBuscado)
-  const clavesLegislador = new Set(crearClavesNombre(nombreLegislador))
+  const clavesLegislador = crearClavesNombre(nombreLegislador)
+  const clavesLegisladorSet = new Set(clavesLegislador)
 
   const clavePrincipalBuscada = clavesBuscadas[0]
-  const clavePrincipalLegislador = crearClavesNombre(nombreLegislador)[0]
+  const clavePrincipalLegislador = clavesLegislador[0]
 
   if (clavePrincipalBuscada && clavePrincipalBuscada === clavePrincipalLegislador) {
     return 100
   }
 
   for (const clave of clavesBuscadas) {
-    if (clavesLegislador.has(clave) && clave.split(' ').length >= 2) {
+    if (clavesLegisladorSet.has(clave) && clave.split(' ').length >= 2) {
       return 95
     }
   }
 
-  const tokensBuscados = clavePrincipalBuscada?.split(' ') ?? []
-  const tokensLegislador = clavePrincipalLegislador?.split(' ') ?? []
-  const interseccion = tokensBuscados.filter((token) => tokensLegislador.includes(token))
-
-  if (interseccion.length >= Math.min(2, tokensBuscados.length) && interseccion.length >= 2) {
-    return 85
+  let mejorPuntajeSolapamiento = 0
+  for (const claveBuscada of clavesBuscadas) {
+    for (const claveLegislador of clavesLegislador) {
+      mejorPuntajeSolapamiento = Math.max(
+        mejorPuntajeSolapamiento,
+        puntajePorSolapamiento(claveBuscada, claveLegislador),
+      )
+    }
   }
 
-  const apellidoBuscado = clavesBuscadas.find((clave) => clave.split(' ').length <= 2)
-  if (
-    apellidoBuscado &&
-    [...clavesLegislador].some(
-      (clave) => clave === apellidoBuscado && apellidoBuscado.split(' ').length >= 1,
-    )
-  ) {
-    return apellidoBuscado.split(' ').length === 2 ? 80 : 70
+  if (mejorPuntajeSolapamiento > 0) {
+    return mejorPuntajeSolapamiento
   }
 
   const compactoBuscado = clavePrincipalBuscada ?? ''
   const compactoLegislador = clavePrincipalLegislador ?? ''
   if (
-    compactoBuscado.length >= 8 &&
+    compactoBuscado.length >= 10 &&
     (compactoLegislador.includes(compactoBuscado) || compactoBuscado.includes(compactoLegislador))
   ) {
     return 60

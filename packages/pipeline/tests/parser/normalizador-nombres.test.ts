@@ -65,6 +65,15 @@ describe('buscarLegislador', () => {
     expect(buscarLegislador('DA SILVA', legisladores)).toBe(5)
   })
 
+  it('evita falsos positivos entre personas con nombre compartido', () => {
+    const universo = [
+      { id: 1, nombre: 'Franchi Azambuja, Julio César' },
+      { id: 2, nombre: 'Guastavino Aguiar, Julio César' },
+    ]
+
+    expect(buscarLegislador('Retamoza Mena, Julio Cesar', universo)).toBeNull()
+  })
+
   it('retorna null si no encuentra', () => {
     expect(buscarLegislador('INEXISTENTE', legisladores)).toBeNull()
   })
