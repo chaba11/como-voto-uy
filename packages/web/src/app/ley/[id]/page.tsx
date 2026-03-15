@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { TipoVoto } from '@como-voto-uy/shared'
-import { urlFichaAsunto, urlImpoLey } from '@como-voto-uy/shared'
+import { urlImpoLey } from '@como-voto-uy/shared'
 import { DesglosePartido } from '@/components/desglose-partido'
 import { EnlacesExternos } from '@/components/enlaces-externos'
 import { IndicadorVoto } from '@/components/indicador-voto'
@@ -47,14 +47,9 @@ export default async function PaginaLey({
             </a>
           )}
           {asunto.carpeta && (
-            <a
-              href={urlFichaAsunto(asunto.carpeta)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-full bg-slate-100 px-2 py-1 text-slate-700 transition-colors hover:bg-slate-200"
-            >
-              Carpeta {asunto.carpeta} ↗
-            </a>
+            <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
+              Carpeta {asunto.carpeta}
+            </span>
           )}
           {asunto.repartido && (
             <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">

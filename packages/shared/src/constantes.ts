@@ -43,10 +43,6 @@ export const MIEMBROS_POR_CUERPO: Record<CuerpoLegislativo, number> = {
 
 export const BASE_URL_IMPO = 'https://www.impo.com.uy'
 
-export function urlFichaAsunto(carpeta: string): string {
-  return `${BASE_URL_PARLAMENTO}/documentosyleyes/ficha-asunto/${carpeta.trim()}`
-}
-
 export function urlImpoLey(numeroLey: string): string {
   const numero = numeroLey.replace(/\D/g, '')
   return `${BASE_URL_IMPO}/bases/leyes/${numero}`

@@ -1,4 +1,4 @@
-import { urlFichaAsunto, urlImpoLey, ETIQUETAS_TIPO_ASUNTO } from '@como-voto-uy/shared'
+import { urlImpoLey, ETIQUETAS_TIPO_ASUNTO } from '@como-voto-uy/shared'
 
 function IconoEnlace() {
   return (
@@ -19,7 +19,7 @@ export function EnlacesExternos({
   tipoAsunto: string | null
 }) {
   const etiqueta = tipoAsunto ? ETIQUETAS_TIPO_ASUNTO[tipoAsunto] : null
-  const hayEnlaces = carpeta || numeroLey
+  const hayEnlaces = numeroLey
 
   if (!etiqueta && !hayEnlaces) return null
 
@@ -29,16 +29,6 @@ export function EnlacesExternos({
         <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-[#002868]">
           {etiqueta}
         </span>
-      )}
-      {carpeta && (
-        <a
-          href={urlFichaAsunto(carpeta)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700 transition-colors hover:bg-slate-200"
-        >
-          Ver ficha en Parlamento <IconoEnlace />
-        </a>
       )}
       {numeroLey && (
         <a
