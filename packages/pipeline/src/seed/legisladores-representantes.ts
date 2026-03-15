@@ -11,6 +11,7 @@ const PARTIDO_POR_DIPUTADO: Record<string, string> = {
   'Bottino, Valentina': 'FA',
   'Gandini, Jorge A.': 'PN',
   'Malan, Juan Martín': 'PN',
+  'Satdjian, José Luis': 'PN',
 }
 
 function obtenerLegislatura50Id(db: DB): number {
