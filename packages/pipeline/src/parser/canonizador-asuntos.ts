@@ -396,6 +396,70 @@ function tituloDesdeContexto(texto: string): string | null {
   return null
 }
 
+export function extraerDescripcionContextual(textoContexto: string): string | undefined {
+  if (!textoContexto?.trim()) return undefined
+
+  let texto = limpiarEspacios(repararMojibake(textoContexto))
+
+  // Estrategia 1: texto entrecomillado con «...»
+  const entrecomillado = /«([\s\S]+?)»/.exec(texto)
+  if (entrecomillado?.[1] && entrecomillado[1].length >= 30) {
+    texto = limpiarEspacios(entrecomillado[1])
+  } else {
+    // Estrategia 2: lectura del secretario
+    const lecturaSecretario = /SEÑOR(?:A)?\s+SECRETARI[OA][^.]*\.-\s*([\s\S]+)/i.exec(texto)
+    if (lecturaSecretario?.[1]) {
+      texto = limpiarEspacios(lecturaSecretario[1])
+    } else {
+      // Estrategia 3: texto después del encabezado de agenda en mayúsculas
+      const encabezadoAgenda = /\d+\)\s+[A-ZÁÉÍÓÚÑÜ][A-ZÁÉÍÓÚÑÜ\s,.\-/()]+?\.\s*[-–—]?\s*([\s\S]+)/
+        .exec(texto)
+      if (encabezadoAgenda?.[1]) {
+        texto = limpiarEspacios(encabezadoAgenda[1])
+      }
+    }
+  }
+
+  // Limpiar prefijos procedimentales
+  texto = texto
+    .replace(/^Léase\s+una\s+moción\s+de\s+orden[.:]\s*/i, '')
+    .replace(/^\(Se lee[.:)]\s*/i, '')
+    .replace(/^Mocionamos\s+para\s+que\s+se\s+declare\s+urgente\s+y\s+se\s+considere\s+de\s+inmediato[.:]\s*/i, '')
+    .replace(/^De acuerdo con lo resuelto[^,]*,\s*/i, '')
+    .replace(/^En discusión (?:general|particular)[.:]\s*/i, '')
+
+  // Quitar firmas
+  texto = texto.replace(/\(Firma[ns]?\s+[^)]+\)/gi, '')
+
+  // Quitar ruido parlamentario
+  texto = texto
+    .replace(/\(Se lee\)/gi, '')
+    .replace(/\(Se vota\)/gi, '')
+    .replace(/Léase\s+una\s+moción\s+de\s+orden\.?/gi, '')
+
+  // Quitar referencias a carpeta/repartido (ya se muestran aparte)
+  texto = texto
+    .replace(/\bCarp(?:eta|\.)\s+[Nn]\.?\s*[°ºo]?\s*\d+(?:\/\d+)?/gi, '')
+    .replace(/\bRep(?:artido|\.)\s+[Nn]\.?\s*[°ºo]?\s*\d+(?:\/\d+)?/gi, '')
+
+  // Quitar ANTECEDENTES:
+  texto = texto.replace(/\(?\s*ANTECEDENTES?:?[^)]*\)?\s*/gi, '')
+
+  texto = limpiarEspacios(texto)
+
+  // Quitar puntos/guiones sueltos al inicio
+  texto = texto.replace(/^[.\-–—:;\s]+/, '').trim()
+
+  if (texto.length < 30) return undefined
+
+  // Truncar a ~1000 chars
+  if (texto.length > 1000) {
+    texto = `${texto.slice(0, 1000).trimEnd()}…`
+  }
+
+  return texto
+}
+
 function descripcionDesdeMetadatos(carpeta?: string, repartido?: string): string | undefined {
   const partes = []
   if (carpeta) partes.push(`Carpeta n.º ${carpeta}`)
@@ -450,7 +514,8 @@ export function canonizarAsunto(input: {
         tituloPublico,
         origenTitulo: override ? 'override_manual' : 'estructurado',
         calidadTitulo: 'canonico',
-        descripcion: descripcionDesdeMetadatos(input.carpeta, input.repartido),
+        descripcion: extraerDescripcionContextual(input.textoContexto ?? '')
+          ?? descripcionDesdeMetadatos(input.carpeta, input.repartido),
         tipoAsunto: input.tipoAsunto ?? desdeProyecto.tipoAsunto,
       }
     }
@@ -473,7 +538,8 @@ export function canonizarAsunto(input: {
           : esTituloFormalFuerte(tituloPublico)
             ? 'razonable'
             : 'incompleto',
-      descripcion: descripcionDesdeMetadatos(input.carpeta, input.repartido),
+      descripcion: extraerDescripcionContextual(input.textoContexto ?? '')
+        ?? descripcionDesdeMetadatos(input.carpeta, input.repartido),
       tipoAsunto: input.tipoAsunto,
     }
   }
@@ -490,7 +556,8 @@ export function canonizarAsunto(input: {
     tituloPublico: override?.tituloPublico ?? identificador,
     origenTitulo: override ? 'override_manual' : 'identificador',
     calidadTitulo: 'incompleto',
-    descripcion: descripcionDesdeMetadatos(input.carpeta, input.repartido),
+    descripcion: extraerDescripcionContextual(input.textoContexto ?? '')
+      ?? descripcionDesdeMetadatos(input.carpeta, input.repartido),
     tipoAsunto: input.tipoAsunto,
   }
 }

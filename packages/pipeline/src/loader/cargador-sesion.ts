@@ -224,7 +224,7 @@ function insertarORecuperarAsunto(tx: DB, asunto?: DatosAsunto | null): number |
         actualizaciones.tituloPublico = asunto.tituloPublico
       }
 
-      if (!asuntoActual.descripcion && asunto.descripcion) {
+      if ((!asuntoActual.descripcion || /^Carpeta n/.test(asuntoActual.descripcion)) && asunto.descripcion) {
         actualizaciones.descripcion = asunto.descripcion
       }
       if (!asuntoActual.tema && asunto.tema) {
