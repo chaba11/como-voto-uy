@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { ETIQUETAS_TIPO_ASUNTO } from '@como-voto-uy/shared'
 import { Buscador } from '@/components/buscador'
 import { TarjetaLegislador } from '@/components/tarjeta-legislador'
 import { buscarLegisladores, buscarLeyes } from '@/lib/consultas'
@@ -91,9 +92,19 @@ export default async function PaginaBuscar({
                       {(ley.origenTitulo === 'identificador' || ley.calidadTitulo === 'incompleto') && (
                         <p className="mt-1 text-xs text-amber-700">Título incompleto</p>
                       )}
-                      <div className="mt-2 flex items-center gap-3 text-xs text-gray-500">
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
                         <span>{ley.fecha}</span>
                         <span className="capitalize">{ley.cuerpo}</span>
+                        {ley.tipoAsunto && ETIQUETAS_TIPO_ASUNTO[ley.tipoAsunto] && (
+                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-[#002868]">
+                            {ETIQUETAS_TIPO_ASUNTO[ley.tipoAsunto]}
+                          </span>
+                        )}
+                        {ley.numeroLey && (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+                            Ley N° {ley.numeroLey}
+                          </span>
+                        )}
                       </div>
                     </Link>
                   ))}

@@ -40,3 +40,22 @@ export const MIEMBROS_POR_CUERPO: Record<CuerpoLegislativo, number> = {
   asamblea_general: 130,
   comision_permanente: 16,
 }
+
+export const BASE_URL_IMPO = 'https://www.impo.com.uy'
+
+export function urlFichaAsunto(carpeta: string): string {
+  return `${BASE_URL_PARLAMENTO}/documentosyleyes/ficha-asunto/${carpeta.trim()}`
+}
+
+export function urlImpoLey(numeroLey: string): string {
+  const numero = numeroLey.replace(/\D/g, '')
+  return `${BASE_URL_IMPO}/bases/leyes/${numero}`
+}
+
+export const ETIQUETAS_TIPO_ASUNTO: Record<string, string> = {
+  proyecto_ley: 'Proyecto de ley',
+  proyecto_resolucion: 'Proyecto de resolución',
+  minuta_comunicacion: 'Minuta de comunicación',
+  mensaje_poder_ejecutivo: 'Mensaje del Poder Ejecutivo',
+  mocion_orden: 'Moción de orden',
+}

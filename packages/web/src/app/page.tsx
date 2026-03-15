@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { ETIQUETAS_TIPO_ASUNTO } from '@como-voto-uy/shared'
 import { Buscador } from '@/components/buscador'
 import { obtenerEstadisticasGlobales } from '@/lib/estadisticas'
 import { obtenerLeyesRecientes } from '@/lib/consultas'
@@ -66,6 +67,16 @@ export default async function Home() {
                   <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-[#002868]">
                     {ley.modalidad}
                   </span>
+                  {ley.tipoAsunto && ETIQUETAS_TIPO_ASUNTO[ley.tipoAsunto] && (
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-[#002868]">
+                      {ETIQUETAS_TIPO_ASUNTO[ley.tipoAsunto]}
+                    </span>
+                  )}
+                  {ley.numeroLey && (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+                      Ley N° {ley.numeroLey}
+                    </span>
+                  )}
                 </div>
               </Link>
             ))}

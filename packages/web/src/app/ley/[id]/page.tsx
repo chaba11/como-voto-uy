@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { TipoVoto } from '@como-voto-uy/shared'
+import { urlFichaAsunto, urlImpoLey } from '@como-voto-uy/shared'
 import { DesglosePartido } from '@/components/desglose-partido'
+import { EnlacesExternos } from '@/components/enlaces-externos'
 import { IndicadorVoto } from '@/components/indicador-voto'
 import { obtenerAsuntoConVotaciones } from '@/lib/consultas'
 
@@ -35,14 +37,24 @@ export default async function PaginaLey({
             </span>
           )}
           {asunto.numeroLey && (
-            <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
-              Ley {asunto.numeroLey}
-            </span>
+            <a
+              href={urlImpoLey(asunto.numeroLey)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-full bg-slate-100 px-2 py-1 text-slate-700 transition-colors hover:bg-slate-200"
+            >
+              Ley {asunto.numeroLey} ↗
+            </a>
           )}
           {asunto.carpeta && (
-            <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
-              Carpeta {asunto.carpeta}
-            </span>
+            <a
+              href={urlFichaAsunto(asunto.carpeta)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-full bg-slate-100 px-2 py-1 text-slate-700 transition-colors hover:bg-slate-200"
+            >
+              Carpeta {asunto.carpeta} ↗
+            </a>
           )}
           {asunto.repartido && (
             <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
@@ -50,6 +62,11 @@ export default async function PaginaLey({
             </span>
           )}
         </div>
+        <EnlacesExternos
+          carpeta={asunto.carpeta}
+          numeroLey={asunto.numeroLey}
+          tipoAsunto={asunto.tipoAsunto}
+        />
       </div>
 
       <div className="space-y-6">
@@ -71,6 +88,16 @@ export default async function PaginaLey({
               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
                 {votacion.estadoCobertura}
               </span>
+              {votacion.fuente?.url && (
+                <a
+                  href={votacion.fuente.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700 transition-colors hover:bg-slate-200"
+                >
+                  Ver taquigráfica ↗
+                </a>
+              )}
             </div>
 
             {votacion.detalleTitulo && (
