@@ -1,16 +1,26 @@
 import Link from 'next/link'
+import { Paginacion } from '@/components/paginacion'
 import {
   calcularAfinidadPartidos,
   obtenerEstadisticasGlobales,
   obtenerLeyesDivididas,
 } from '@/lib/estadisticas'
 
-export default async function PaginaEstadisticas() {
-  const [globales, leyesDivididas, afinidad] = await Promise.all([
+export default async function PaginaEstadisticas({
+  searchParams,
+}: {
+  searchParams: Promise<{ pagina?: string }>
+}) {
+  const params = await searchParams
+  const pagina = params.pagina ? parseInt(params.pagina, 10) : 1
+
+  const [globales, resultadoDivididas, afinidad] = await Promise.all([
     obtenerEstadisticasGlobales(),
-    obtenerLeyesDivididas(15),
+    obtenerLeyesDivididas({ pagina }),
     calcularAfinidadPartidos(),
   ])
+
+  const totalPaginas = Math.ceil(resultadoDivididas.total / 15)
 
   const partidosSiglas = [...new Set(afinidad.flatMap((fila) => [fila.partido1, fila.partido2]))]
   const afinidadMap: Record<string, Record<string, number>> = {}
@@ -46,37 +56,44 @@ export default async function PaginaEstadisticas() {
 
       <div className="mb-8 rounded-xl bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-xl font-bold text-gray-900">Asuntos más divididos</h2>
-        {leyesDivididas.length === 0 ? (
+        {resultadoDivididas.datos.length === 0 ? (
           <p className="py-8 text-center text-gray-500">No hay datos suficientes.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b text-xs text-gray-500">
-                  <th className="pb-2 pr-4">Asunto</th>
-                  <th className="pb-2 pr-4">Fecha</th>
-                  <th className="pb-2 pr-4">Cuerpo</th>
-                  <th className="pb-2 pr-4 text-right">Afirmativos</th>
-                  <th className="pb-2 text-right">Negativos</th>
-                </tr>
-              </thead>
-              <tbody>
-                {leyesDivididas.map((ley) => (
-                  <tr key={`${ley.asuntoId}-${ley.fecha}`} className="border-b last:border-0">
-                    <td className="py-3 pr-4">
-                      <Link href={`/ley/${ley.asuntoId}`} className="font-medium text-[#002868] hover:underline">
-                        {ley.tituloPublico}
-                      </Link>
-                    </td>
-                    <td className="py-3 pr-4 text-gray-500">{ley.fecha}</td>
-                    <td className="py-3 pr-4 capitalize text-gray-500">{ley.cuerpo}</td>
-                    <td className="py-3 pr-4 text-right font-medium text-green-600">{ley.afirmativos ?? '-'}</td>
-                    <td className="py-3 text-right font-medium text-red-600">{ley.negativos ?? '-'}</td>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b text-xs text-gray-500">
+                    <th className="pb-2 pr-4">Asunto</th>
+                    <th className="pb-2 pr-4">Fecha</th>
+                    <th className="pb-2 pr-4">Cuerpo</th>
+                    <th className="pb-2 pr-4 text-right">Afirmativos</th>
+                    <th className="pb-2 text-right">Negativos</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {resultadoDivididas.datos.map((ley) => (
+                    <tr key={`${ley.asuntoId}-${ley.fecha}`} className="border-b last:border-0">
+                      <td className="py-3 pr-4">
+                        <Link href={`/ley/${ley.asuntoId}`} className="font-medium text-[#002868] hover:underline">
+                          {ley.tituloPublico}
+                        </Link>
+                      </td>
+                      <td className="py-3 pr-4 text-gray-500">{ley.fecha}</td>
+                      <td className="py-3 pr-4 capitalize text-gray-500">{ley.cuerpo}</td>
+                      <td className="py-3 pr-4 text-right font-medium text-green-600">{ley.afirmativos ?? '-'}</td>
+                      <td className="py-3 text-right font-medium text-red-600">{ley.negativos ?? '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Paginacion
+              paginaActual={pagina}
+              totalPaginas={totalPaginas}
+              searchParams={{}}
+            />
+          </>
         )}
       </div>
 

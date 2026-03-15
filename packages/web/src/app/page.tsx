@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Buscador } from '@/components/buscador'
+import { TarjetaAsunto } from '@/components/tarjeta-asunto'
 import { obtenerEstadisticasGlobales } from '@/lib/estadisticas'
 import { obtenerLeyesRecientes } from '@/lib/consultas'
 
@@ -49,25 +50,7 @@ export default async function Home() {
         {leyesRecientes.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {leyesRecientes.map((ley) => (
-              <Link
-                key={ley.id}
-                href={`/ley/${ley.id}`}
-                className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
-              >
-                <h3 className="line-clamp-2 font-semibold text-gray-900">{ley.tituloPublico}</h3>
-                <div className="mt-3 flex items-center gap-3 text-xs text-gray-500">
-                  <span>{ley.fecha}</span>
-                  <span className="capitalize">{ley.cuerpo}</span>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
-                    {ley.estadoCobertura}
-                  </span>
-                  <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-[#002868]">
-                    {ley.modalidad}
-                  </span>
-                </div>
-              </Link>
+              <TarjetaAsunto key={ley.id} asunto={ley} />
             ))}
           </div>
         ) : (

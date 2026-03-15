@@ -1,18 +1,26 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { Paginacion } from '@/components/paginacion'
 import { obtenerPartidoDetalle } from '@/lib/consultas'
 
 export default async function PaginaPartido({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ pagina?: string }>
 }) {
   const { id } = await params
+  const sp = await searchParams
   const partidoId = parseInt(id, 10)
   if (Number.isNaN(partidoId)) notFound()
 
-  const detalle = await obtenerPartidoDetalle(partidoId)
+  const pagina = sp.pagina ? parseInt(sp.pagina, 10) : 1
+
+  const detalle = await obtenerPartidoDetalle(partidoId, { paginaMiembros: pagina })
   if (!detalle) notFound()
+
+  const totalPaginas = Math.ceil(detalle.totalMiembros / 30)
 
   const afirmativos = detalle.votos.filter((voto) => voto.voto === 'afirmativo').length
   const negativos = detalle.votos.filter((voto) => voto.voto === 'negativo').length
@@ -34,7 +42,7 @@ export default async function PaginaPartido({
 
       <div className="mb-8 grid gap-4 sm:grid-cols-4">
         <div className="rounded-lg bg-white p-4 text-center shadow-sm">
-          <div className="text-2xl font-bold text-gray-900">{detalle.miembros.length}</div>
+          <div className="text-2xl font-bold text-gray-900">{detalle.totalMiembros}</div>
           <div className="text-xs text-gray-500">Miembros</div>
         </div>
         <div className="rounded-lg bg-white p-4 text-center shadow-sm">
@@ -66,6 +74,11 @@ export default async function PaginaPartido({
             </li>
           ))}
         </ul>
+        <Paginacion
+          paginaActual={pagina}
+          totalPaginas={totalPaginas}
+          searchParams={{}}
+        />
       </div>
     </div>
   )

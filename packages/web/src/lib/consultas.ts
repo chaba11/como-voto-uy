@@ -92,33 +92,50 @@ export async function obtenerLegislador(id: number) {
   }
 }
 
-export async function obtenerVotosPorLegislador(legisladorId: number) {
-  if (!db) return []
+export async function obtenerVotosPorLegislador(
+  legisladorId: number,
+  opciones?: { pagina?: number; porPagina?: number },
+) {
+  if (!db) return { datos: [], total: 0 }
 
-  return await db
-    .select({
-      id: votosIndividuales.id,
-      voto: votosIndividuales.voto,
-      nivelConfianza: votosIndividuales.nivelConfianza,
-      asuntoId: asuntos.id,
-      asuntoNombre: asuntos.tituloPublico,
-      fecha: sesiones.fecha,
-      cuerpo: sesiones.cuerpo,
-      fuenteTipo: fuentes.tipo,
-      fuenteUrl: fuentes.url,
-    })
-    .from(votosIndividuales)
-    .innerJoin(votaciones, eq(votosIndividuales.votacionId, votaciones.id))
-    .innerJoin(sesiones, eq(votaciones.sesionId, sesiones.id))
-    .leftJoin(asuntos, eq(votaciones.asuntoId, asuntos.id))
-    .leftJoin(fuentes, eq(votosIndividuales.fuenteId, fuentes.id))
-    .where(
-      and(
-        eq(votosIndividuales.legisladorId, legisladorId),
-        inArray(votosIndividuales.nivelConfianza, nivelesPublicos),
-      ),
-    )
-    .orderBy(desc(sesiones.fecha), desc(votaciones.ordenSesion))
+  const pagina = opciones?.pagina ?? 1
+  const porPagina = opciones?.porPagina ?? 30
+  const offset = (pagina - 1) * porPagina
+
+  const condicion = and(
+    eq(votosIndividuales.legisladorId, legisladorId),
+    inArray(votosIndividuales.nivelConfianza, nivelesPublicos),
+  )
+
+  const [datos, totalResult] = await Promise.all([
+    db
+      .select({
+        id: votosIndividuales.id,
+        voto: votosIndividuales.voto,
+        nivelConfianza: votosIndividuales.nivelConfianza,
+        asuntoId: asuntos.id,
+        asuntoNombre: asuntos.tituloPublico,
+        fecha: sesiones.fecha,
+        cuerpo: sesiones.cuerpo,
+        fuenteTipo: fuentes.tipo,
+        fuenteUrl: fuentes.url,
+      })
+      .from(votosIndividuales)
+      .innerJoin(votaciones, eq(votosIndividuales.votacionId, votaciones.id))
+      .innerJoin(sesiones, eq(votaciones.sesionId, sesiones.id))
+      .leftJoin(asuntos, eq(votaciones.asuntoId, asuntos.id))
+      .leftJoin(fuentes, eq(votosIndividuales.fuenteId, fuentes.id))
+      .where(condicion)
+      .orderBy(desc(sesiones.fecha), desc(votaciones.ordenSesion))
+      .limit(porPagina)
+      .offset(offset),
+    db
+      .select({ total: count() })
+      .from(votosIndividuales)
+      .where(condicion),
+  ])
+
+  return { datos, total: totalResult[0]?.total ?? 0 }
 }
 
 export async function obtenerEstadisticasLegislador(legisladorId: number) {
@@ -184,32 +201,52 @@ export async function buscarLegisladores(filtros: {
   partido?: number
   departamento?: string
   termino?: string
+  camara?: string
+  pagina?: number
+  porPagina?: number
 }) {
-  if (!db) return []
+  if (!db) return { datos: [], total: 0 }
+
+  const pagina = filtros.pagina ?? 1
+  const porPagina = filtros.porPagina ?? 24
+  const offset = (pagina - 1) * porPagina
 
   const condiciones = []
   if (filtros.partido) condiciones.push(eq(legisladores.partidoId, filtros.partido))
   if (filtros.departamento) condiciones.push(eq(legisladores.departamento, filtros.departamento))
   if (filtros.termino) condiciones.push(like(legisladores.nombre, `%${filtros.termino}%`))
+  if (filtros.camara) condiciones.push(eq(legisladores.camara, filtros.camara as never))
 
-  return await db
-    .select({
-      id: legisladores.id,
-      nombre: legisladores.nombre,
-      legislaturaId: legisladores.legislaturaId,
-      camara: legisladores.camara,
-      departamento: legisladores.departamento,
-      origenPartido: legisladores.origenPartido,
-      partidoId: partidos.id,
-      partidoNombre: partidos.nombre,
-      partidoSigla: partidos.sigla,
-      partidoColor: partidos.color,
-    })
-    .from(legisladores)
-    .innerJoin(partidos, eq(legisladores.partidoId, partidos.id))
-    .where(condiciones.length > 0 ? and(...condiciones) : undefined)
-    .orderBy(legisladores.nombre)
-    .limit(50)
+  const condicion = condiciones.length > 0 ? and(...condiciones) : undefined
+
+  const [datos, totalResult] = await Promise.all([
+    db
+      .select({
+        id: legisladores.id,
+        nombre: legisladores.nombre,
+        legislaturaId: legisladores.legislaturaId,
+        camara: legisladores.camara,
+        departamento: legisladores.departamento,
+        origenPartido: legisladores.origenPartido,
+        partidoId: partidos.id,
+        partidoNombre: partidos.nombre,
+        partidoSigla: partidos.sigla,
+        partidoColor: partidos.color,
+      })
+      .from(legisladores)
+      .innerJoin(partidos, eq(legisladores.partidoId, partidos.id))
+      .where(condicion)
+      .orderBy(legisladores.nombre)
+      .limit(porPagina)
+      .offset(offset),
+    db
+      .select({ total: count() })
+      .from(legisladores)
+      .innerJoin(partidos, eq(legisladores.partidoId, partidos.id))
+      .where(condicion),
+  ])
+
+  return { datos, total: totalResult[0]?.total ?? 0 }
 }
 
 type FilaAsuntoBusqueda = {
@@ -246,8 +283,13 @@ export async function buscarLeyes(filtros: {
   año?: number
   cuerpo?: string
   termino?: string
+  pagina?: number
+  porPagina?: number
 }) {
-  if (!db) return []
+  if (!db) return { datos: [], total: 0 }
+
+  const pagina = filtros.pagina ?? 1
+  const porPagina = filtros.porPagina ?? 20
 
   const condiciones = []
   if (filtros.cuerpo) condiciones.push(eq(sesiones.cuerpo, filtros.cuerpo as never))
@@ -265,6 +307,9 @@ export async function buscarLeyes(filtros: {
   }
   if (filtros.año) condiciones.push(like(sesiones.fecha, `${filtros.año}%`))
 
+  const condicion = condiciones.length > 0 ? and(...condiciones) : undefined
+
+  // Fetch more rows than needed to handle deduplication, then paginate
   const filas = await db
     .select({
       id: asuntos.id,
@@ -291,16 +336,20 @@ export async function buscarLeyes(filtros: {
     .innerJoin(votaciones, eq(votaciones.asuntoId, asuntos.id))
     .innerJoin(sesiones, eq(votaciones.sesionId, sesiones.id))
     .leftJoin(resultadosAgregados, eq(resultadosAgregados.votacionId, votaciones.id))
-    .where(condiciones.length > 0 ? and(...condiciones) : undefined)
+    .where(condicion)
     .orderBy(desc(sesiones.fecha), desc(votaciones.ordenSesion))
-    .limit(100)
 
-  return deduplicarAsuntos(filas)
+  const deduplicadas = deduplicarAsuntos(filas)
+  const total = deduplicadas.length
+  const offset = (pagina - 1) * porPagina
+  const datos = deduplicadas.slice(offset, offset + porPagina)
+
+  return { datos, total }
 }
 
 export async function obtenerLeyesRecientes(limite = 10) {
-  const filas = await buscarLeyes({})
-  return filas.slice(0, limite)
+  const { datos } = await buscarLeyes({ porPagina: limite })
+  return datos
 }
 
 export async function obtenerPartidos() {
@@ -446,8 +495,15 @@ export async function obtenerAsuntoConVotaciones(id: number) {
   }
 }
 
-export async function obtenerPartidoDetalle(id: number) {
+export async function obtenerPartidoDetalle(
+  id: number,
+  opciones?: { paginaMiembros?: number; porPaginaMiembros?: number },
+) {
   if (!db) return null
+
+  const pagina = opciones?.paginaMiembros ?? 1
+  const porPagina = opciones?.porPaginaMiembros ?? 30
+  const offset = (pagina - 1) * porPagina
 
   const partido = (
     await db
@@ -459,39 +515,47 @@ export async function obtenerPartidoDetalle(id: number) {
 
   if (!partido) return null
 
-  const miembros = await db
-    .select({
-      id: legisladores.id,
-      nombre: legisladores.nombre,
-      camara: legisladores.camara,
-      departamento: legisladores.departamento,
-    })
-    .from(legisladores)
-    .where(eq(legisladores.partidoId, id))
-    .orderBy(legisladores.camara, legisladores.nombre)
-
-  const votos = await db
-    .select({
-      voto: votosIndividuales.voto,
-      asuntoId: asuntos.id,
-      asuntoNombre: asuntos.tituloPublico,
-      fecha: sesiones.fecha,
-    })
-    .from(votosIndividuales)
-    .innerJoin(legisladores, eq(votosIndividuales.legisladorId, legisladores.id))
-    .innerJoin(votaciones, eq(votosIndividuales.votacionId, votaciones.id))
-    .leftJoin(asuntos, eq(votaciones.asuntoId, asuntos.id))
-    .innerJoin(sesiones, eq(votaciones.sesionId, sesiones.id))
-    .where(
-      and(
-        eq(legisladores.partidoId, id),
-        inArray(votosIndividuales.nivelConfianza, nivelesRanking),
+  const [miembros, totalMiembrosResult, votos] = await Promise.all([
+    db
+      .select({
+        id: legisladores.id,
+        nombre: legisladores.nombre,
+        camara: legisladores.camara,
+        departamento: legisladores.departamento,
+      })
+      .from(legisladores)
+      .where(eq(legisladores.partidoId, id))
+      .orderBy(legisladores.camara, legisladores.nombre)
+      .limit(porPagina)
+      .offset(offset),
+    db
+      .select({ total: count() })
+      .from(legisladores)
+      .where(eq(legisladores.partidoId, id)),
+    db
+      .select({
+        voto: votosIndividuales.voto,
+        asuntoId: asuntos.id,
+        asuntoNombre: asuntos.tituloPublico,
+        fecha: sesiones.fecha,
+      })
+      .from(votosIndividuales)
+      .innerJoin(legisladores, eq(votosIndividuales.legisladorId, legisladores.id))
+      .innerJoin(votaciones, eq(votosIndividuales.votacionId, votaciones.id))
+      .leftJoin(asuntos, eq(votaciones.asuntoId, asuntos.id))
+      .innerJoin(sesiones, eq(votaciones.sesionId, sesiones.id))
+      .where(
+        and(
+          eq(legisladores.partidoId, id),
+          inArray(votosIndividuales.nivelConfianza, nivelesRanking),
+        ),
       ),
-    )
+  ])
 
   return {
     partido,
     miembros,
+    totalMiembros: totalMiembrosResult[0]?.total ?? 0,
     votos,
   }
 }
