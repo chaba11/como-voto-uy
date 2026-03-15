@@ -1,24 +1,32 @@
 import { notFound } from 'next/navigation'
+import { Paginacion } from '@/components/paginacion'
 import { TablaVotos } from '@/components/tabla-votos'
 import { obtenerEstadisticasLegislador, obtenerLegislador, obtenerVotosPorLegislador } from '@/lib/consultas'
 import type { TipoVoto } from '@como-voto-uy/shared'
 
 export default async function PaginaLegislador({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ pagina?: string }>
 }) {
   const { id } = await params
+  const sp = await searchParams
   const legisladorId = parseInt(id, 10)
   if (Number.isNaN(legisladorId)) notFound()
 
-  const [legislador, votos, estadisticas] = await Promise.all([
+  const pagina = sp.pagina ? parseInt(sp.pagina, 10) : 1
+
+  const [legislador, resultadoVotos, estadisticas] = await Promise.all([
     obtenerLegislador(legisladorId),
-    obtenerVotosPorLegislador(legisladorId),
+    obtenerVotosPorLegislador(legisladorId, { pagina }),
     obtenerEstadisticasLegislador(legisladorId),
   ])
 
   if (!legislador) notFound()
+
+  const totalPaginas = Math.ceil(resultadoVotos.total / 30)
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
@@ -77,7 +85,7 @@ export default async function PaginaLegislador({
       <div className="rounded-xl bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-xl font-bold text-gray-900">Historial de votos</h2>
         <TablaVotos
-          votos={votos.map((voto) => ({
+          votos={resultadoVotos.datos.map((voto) => ({
             id: voto.id,
             voto: voto.voto as TipoVoto,
             asuntoId: voto.asuntoId,
@@ -86,6 +94,11 @@ export default async function PaginaLegislador({
             cuerpo: voto.cuerpo,
             nivelConfianza: voto.nivelConfianza,
           }))}
+        />
+        <Paginacion
+          paginaActual={pagina}
+          totalPaginas={totalPaginas}
+          searchParams={{}}
         />
       </div>
     </div>

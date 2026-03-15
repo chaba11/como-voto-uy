@@ -40,8 +40,11 @@ export async function obtenerEstadisticasGlobales() {
   }
 }
 
-export async function obtenerLeyesDivididas(limite = 10) {
-  if (!db) return []
+export async function obtenerLeyesDivididas(opciones?: { pagina?: number; porPagina?: number }) {
+  if (!db) return { datos: [], total: 0 }
+
+  const pagina = opciones?.pagina ?? 1
+  const porPagina = opciones?.porPagina ?? 15
 
   const filas = await db
     .select({
@@ -60,10 +63,15 @@ export async function obtenerLeyesDivididas(limite = 10) {
     .where(and(eq(votaciones.estadoCobertura, 'individual_confirmado')))
     .orderBy(desc(sesiones.fecha))
 
-  return filas
+  const todas = filas
     .filter((fila) => (fila.negativos ?? 0) > 0)
     .sort((a, b) => Math.abs((a.afirmativos ?? 0) - (a.negativos ?? 0)) - Math.abs((b.afirmativos ?? 0) - (b.negativos ?? 0)))
-    .slice(0, limite)
+
+  const total = todas.length
+  const offset = (pagina - 1) * porPagina
+  const datos = todas.slice(offset, offset + porPagina)
+
+  return { datos, total }
 }
 
 export async function calcularAfinidadPartidos() {
@@ -135,8 +143,13 @@ export async function obtenerRankingParticipacion(filtros?: {
   camara?: string
   partidoId?: number
   departamento?: string
+  pagina?: number
+  porPagina?: number
 }) {
-  if (!db) return []
+  if (!db) return { datos: [], total: 0 }
+
+  const pagina = filtros?.pagina ?? 1
+  const porPagina = filtros?.porPagina ?? 30
 
   const condiciones = []
   if (filtros?.camara) condiciones.push(eq(legisladores.camara, filtros.camara as never))
@@ -165,7 +178,7 @@ export async function obtenerRankingParticipacion(filtros?: {
     .from(votosIndividuales)
     .where(inArray(votosIndividuales.nivelConfianza, nivelesRanking))
 
-  return legisladoresBase
+  const todos = legisladoresBase
     .map((legislador) => {
       const votosLeg = votos.filter((voto) => voto.legisladorId === legislador.legisladorId)
       const presentes = votosLeg.filter((voto) => voto.voto !== 'ausente').length
@@ -181,4 +194,10 @@ export async function obtenerRankingParticipacion(filtros?: {
       rank: indice + 1,
       ...fila,
     }))
+
+  const total = todos.length
+  const offset = (pagina - 1) * porPagina
+  const datos = todos.slice(offset, offset + porPagina)
+
+  return { datos, total }
 }
