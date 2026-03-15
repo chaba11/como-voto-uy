@@ -27,7 +27,7 @@ export default async function Home() {
       <section className="bg-[#002868] py-20 text-white">
         <div className="mx-auto max-w-4xl px-4 text-center">
           <h1 className="text-5xl font-extrabold tracking-tight">
-            Como Voto <span className="font-light">UY</span>
+            Cómo Votó <span className="font-light">UY</span>
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-blue-200">
             Asuntos canónicos, timeline de votaciones y votos individuales cuando existen

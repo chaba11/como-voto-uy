@@ -55,7 +55,7 @@ export function DesglosePartido({ votos }: { votos: VotoPorPartido[] }) {
   if (partidosOrdenados.length === 0) {
     return (
       <p className="py-8 text-center text-gray-500">
-        No hay datos de votacion por partido.
+        No hay datos de votación por partido.
       </p>
     )
   }

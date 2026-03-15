@@ -4,7 +4,7 @@ import { Footer } from '@/components/footer'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Como Voto UY',
+  title: 'Cómo Votó UY',
   description: 'Transparencia legislativa para Uruguay',
 }
 
