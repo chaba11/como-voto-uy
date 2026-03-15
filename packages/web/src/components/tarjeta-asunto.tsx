@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { ETIQUETAS_TIPO_ASUNTO } from '@como-voto-uy/shared'
 
 interface DatosAsunto {
   id: number
@@ -13,6 +14,8 @@ interface DatosAsunto {
   unanimidad?: boolean | null
   estadoCobertura?: string
   modalidad?: string
+  tipoAsunto?: string | null
+  numeroLey?: string | null
 }
 
 export function TarjetaAsunto({ asunto }: { asunto: DatosAsunto }) {
@@ -53,20 +56,28 @@ export function TarjetaAsunto({ asunto }: { asunto: DatosAsunto }) {
         )}
       </div>
 
-      {(asunto.estadoCobertura || asunto.modalidad) && (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {asunto.estadoCobertura && (
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
-              {asunto.estadoCobertura}
-            </span>
-          )}
-          {asunto.modalidad && (
-            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-[#002868]">
-              {asunto.modalidad}
-            </span>
-          )}
-        </div>
-      )}
+      <div className="mt-2 flex flex-wrap gap-2">
+        {asunto.estadoCobertura && (
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+            {asunto.estadoCobertura}
+          </span>
+        )}
+        {asunto.modalidad && (
+          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-[#002868]">
+            {asunto.modalidad}
+          </span>
+        )}
+        {asunto.tipoAsunto && ETIQUETAS_TIPO_ASUNTO[asunto.tipoAsunto] && (
+          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-[#002868]">
+            {ETIQUETAS_TIPO_ASUNTO[asunto.tipoAsunto]}
+          </span>
+        )}
+        {asunto.numeroLey && (
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+            Ley N° {asunto.numeroLey}
+          </span>
+        )}
+      </div>
     </Link>
   )
 }

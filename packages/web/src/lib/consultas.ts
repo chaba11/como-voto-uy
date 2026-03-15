@@ -260,6 +260,7 @@ type FilaAsuntoBusqueda = {
   carpeta: string | null
   repartido: string | null
   numeroLey: string | null
+  tipoAsunto: string | null
   fecha: string
   cuerpo: string
   modalidad: string
@@ -322,6 +323,7 @@ export async function buscarLeyes(filtros: {
       carpeta: asuntos.carpeta,
       repartido: asuntos.repartido,
       numeroLey: asuntos.numeroLey,
+      tipoAsunto: asuntos.tipoAsunto,
       fecha: sesiones.fecha,
       cuerpo: sesiones.cuerpo,
       modalidad: votaciones.modalidad,
